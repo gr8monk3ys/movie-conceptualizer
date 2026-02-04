@@ -10,6 +10,10 @@ from slowapi.errors import RateLimitExceeded
 
 from movie_conceptualizer.api.ratelimit import (
     DEFAULT_RATE_LIMIT,
+    check_redis_health,
+    get_backend_type,
+    get_rate_limit_status,
+    is_redis_available,
     limiter,
     rate_limit_exceeded_handler,
 )
@@ -158,10 +162,53 @@ async def root(request: Request) -> dict:
 @limiter.exempt
 async def health_check() -> dict:
     """Health check endpoint."""
-    return {
+    health_response = {
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat(),
         "version": API_VERSION,
+        "rate_limiting": {
+            "backend": get_backend_type(),
+        },
+    }
+
+    # Include Redis status if Redis backend is configured
+    if is_redis_available():
+        redis_health = await check_redis_health()
+        health_response["rate_limiting"]["redis"] = {
+            "status": redis_health.get("status"),
+            "version": redis_health.get("redis_version"),
+        }
+        # Mark overall status as degraded if Redis is unhealthy
+        if redis_health.get("status") == "unhealthy":
+            health_response["status"] = "degraded"
+            health_response["issues"] = ["Redis connection unhealthy"]
+
+    return health_response
+
+
+@app.get(
+    "/health/redis",
+    tags=["info"],
+    summary="Redis Health Check",
+    description="Check the health of the Redis connection for rate limiting.",
+)
+@limiter.exempt
+async def redis_health_check() -> dict:
+    """Redis-specific health check endpoint."""
+    redis_health = await check_redis_health()
+
+    # Add rate limit configuration info
+    rate_limit_info = get_rate_limit_status()
+
+    return {
+        "timestamp": datetime.utcnow().isoformat(),
+        "redis": redis_health,
+        "rate_limiting": {
+            "configured_backend": rate_limit_info["configured_backend"],
+            "active_backend": rate_limit_info["backend"],
+            "default_limit": rate_limit_info["default_limit"],
+            "generation_limit": rate_limit_info["generation_limit"],
+        },
     }
 
 

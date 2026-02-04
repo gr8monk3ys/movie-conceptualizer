@@ -1,7 +1,10 @@
 """Repository pattern for data access.
 
 This module provides repository classes for CRUD operations on
-the SQLite database, using Pydantic models for serialization.
+both SQLite and PostgreSQL databases, using Pydantic models for serialization.
+
+The repositories handle the differences between database backends transparently,
+including parameter placeholder styles (? vs $1) and JSON field handling.
 """
 
 from __future__ import annotations
@@ -14,10 +17,14 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
-from movie_conceptualizer.storage.database import Database, get_database
+from movie_conceptualizer.storage.database import (
+    BaseDatabase,
+    DatabaseBackend,
+    get_database,
+)
 
 if TYPE_CHECKING:
-    from aiosqlite import Row
+    pass
 
 
 # Type variables for generic repository
@@ -26,6 +33,7 @@ T = TypeVar("T", bound=BaseModel)
 
 # Define schemas locally to avoid circular imports with api.schemas
 # These are storage-layer representations that map to database columns
+
 
 class ProjectStatus(StrEnum):
     """Project processing status."""
@@ -127,16 +135,36 @@ def _json_dumps(data: Any) -> str:
     return json.dumps(data, default=str)
 
 
-def _json_loads(data: str | None) -> Any:
-    """Deserialize JSON string to data."""
+def _json_loads(data: str | list | dict | None) -> Any:
+    """Deserialize JSON string or already-parsed data.
+
+    PostgreSQL JSONB fields return already-parsed Python objects,
+    while SQLite TEXT fields return JSON strings that need parsing.
+    """
     if data is None:
         return None
+    if isinstance(data, (list, dict)):
+        # Already parsed (PostgreSQL JSONB)
+        return data
     return json.loads(data)
 
 
-def _row_to_dict(row: Row) -> dict[str, Any]:
-    """Convert a database row to a dictionary."""
-    return dict(row)
+def _row_to_dict(row: Any, backend: DatabaseBackend) -> dict[str, Any]:
+    """Convert a database row to a dictionary.
+
+    Args:
+        row: Database row (sqlite3.Row or asyncpg.Record).
+        backend: The database backend being used.
+
+    Returns:
+        Dictionary of column names to values.
+    """
+    if backend == DatabaseBackend.POSTGRESQL:
+        # asyncpg.Record is already dict-like
+        return dict(row)
+    else:
+        # sqlite3.Row
+        return dict(row)
 
 
 class ProjectModel(BaseModel):
@@ -181,25 +209,170 @@ class ScriptModel(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class ProjectRepository:
-    """Repository for project CRUD operations.
+class BaseRepository:
+    """Base repository with common database operations.
 
-    Provides async methods for creating, reading, updating, and deleting
-    projects in the SQLite database.
-
-    Example:
-        repo = ProjectRepository(db)
-        project = await repo.create(title="My Film", genre="drama")
-        projects = await repo.list_all()
+    Provides helper methods for working with different database backends.
     """
 
-    def __init__(self, database: Database | None = None):
+    def __init__(self, database: BaseDatabase | None = None):
         """Initialize the repository.
 
         Args:
             database: Database instance. Uses global instance if not provided.
         """
         self._db = database or get_database()
+
+    @property
+    def backend(self) -> DatabaseBackend:
+        """Get the database backend type."""
+        return self._db.backend
+
+    def _param(self, index: int) -> str:
+        """Get the parameter placeholder for the given index.
+
+        Args:
+            index: 1-based parameter index.
+
+        Returns:
+            '?' for SQLite, '$n' for PostgreSQL.
+        """
+        if self.backend == DatabaseBackend.POSTGRESQL:
+            return f"${index}"
+        return "?"
+
+    def _params(self, count: int) -> str:
+        """Get comma-separated parameter placeholders.
+
+        Args:
+            count: Number of parameters.
+
+        Returns:
+            Comma-separated placeholder string (e.g., "?, ?, ?" or "$1, $2, $3").
+        """
+        if self.backend == DatabaseBackend.POSTGRESQL:
+            return ", ".join(f"${i}" for i in range(1, count + 1))
+        return ", ".join("?" for _ in range(count))
+
+    async def _execute(
+        self, conn: Any, query: str, params: tuple[Any, ...] | None = None
+    ) -> Any:
+        """Execute a query with backend-appropriate handling.
+
+        Args:
+            conn: Database connection.
+            query: SQL query string.
+            params: Query parameters (optional).
+
+        Returns:
+            Cursor (SQLite) or result string (PostgreSQL).
+        """
+        if self.backend == DatabaseBackend.POSTGRESQL:
+            if params:
+                return await conn.execute(query, *params)
+            return await conn.execute(query)
+        else:
+            if params:
+                return await conn.execute(query, params)
+            return await conn.execute(query)
+
+    async def _fetchone(self, conn: Any, query: str, params: tuple[Any, ...] | None = None) -> Any:
+        """Execute a query and fetch one row.
+
+        Args:
+            conn: Database connection.
+            query: SQL query string.
+            params: Query parameters (optional).
+
+        Returns:
+            Single row or None.
+        """
+        if self.backend == DatabaseBackend.POSTGRESQL:
+            if params:
+                return await conn.fetchrow(query, *params)
+            return await conn.fetchrow(query)
+        else:
+            if params:
+                cursor = await conn.execute(query, params)
+            else:
+                cursor = await conn.execute(query)
+            return await cursor.fetchone()
+
+    async def _fetchall(self, conn: Any, query: str, params: tuple[Any, ...] | None = None) -> list[Any]:
+        """Execute a query and fetch all rows.
+
+        Args:
+            conn: Database connection.
+            query: SQL query string.
+            params: Query parameters (optional).
+
+        Returns:
+            List of rows.
+        """
+        if self.backend == DatabaseBackend.POSTGRESQL:
+            if params:
+                return await conn.fetch(query, *params)
+            return await conn.fetch(query)
+        else:
+            if params:
+                cursor = await conn.execute(query, params)
+            else:
+                cursor = await conn.execute(query)
+            return await cursor.fetchall()
+
+    async def _fetchval(self, conn: Any, query: str, params: tuple[Any, ...] | None = None) -> Any:
+        """Execute a query and fetch a single value.
+
+        Args:
+            conn: Database connection.
+            query: SQL query string.
+            params: Query parameters (optional).
+
+        Returns:
+            Single value or None.
+        """
+        if self.backend == DatabaseBackend.POSTGRESQL:
+            if params:
+                return await conn.fetchval(query, *params)
+            return await conn.fetchval(query)
+        else:
+            if params:
+                cursor = await conn.execute(query, params)
+            else:
+                cursor = await conn.execute(query)
+            row = await cursor.fetchone()
+            return row[0] if row else None
+
+    def _serialize_json(self, data: Any) -> Any:
+        """Serialize data for JSON storage.
+
+        Args:
+            data: Data to serialize.
+
+        Returns:
+            JSON string for SQLite, Python object for PostgreSQL.
+        """
+        if self.backend == DatabaseBackend.POSTGRESQL:
+            # PostgreSQL JSONB accepts Python objects directly
+            if isinstance(data, BaseModel):
+                return data.model_dump()
+            return data
+        else:
+            # SQLite needs JSON string
+            return _json_dumps(data)
+
+
+class ProjectRepository(BaseRepository):
+    """Repository for project CRUD operations.
+
+    Provides async methods for creating, reading, updating, and deleting
+    projects in the database.
+
+    Example:
+        repo = ProjectRepository(db)
+        project = await repo.create(title="My Film", genre="drama")
+        projects = await repo.list_all()
+    """
 
     async def create(
         self,
@@ -223,12 +396,14 @@ class ProjectRepository:
         now = datetime.utcnow()
 
         async with self._db.connection() as conn:
-            await conn.execute(
-                """
+            query = f"""
                 INSERT INTO projects
                 (id, title, description, genre, style_notes, status, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
+                VALUES ({self._params(8)})
+            """
+            await self._execute(
+                conn,
+                query,
                 (
                     project_id, title, description, genre, style_notes,
                     ProjectStatus.CREATED, now, now
@@ -256,11 +431,8 @@ class ProjectRepository:
             The ProjectModel if found, None otherwise.
         """
         async with self._db.connection() as conn:
-            cursor = await conn.execute(
-                "SELECT * FROM projects WHERE id = ?",
-                (project_id,),
-            )
-            row = await cursor.fetchone()
+            query = f"SELECT * FROM projects WHERE id = {self._param(1)}"
+            row = await self._fetchone(conn, query, (project_id,))
 
             if row is None:
                 return None
@@ -268,26 +440,17 @@ class ProjectRepository:
             project = self._row_to_project(row)
 
             # Get related counts
-            cursor = await conn.execute(
-                "SELECT COUNT(*) FROM scripts WHERE project_id = ?",
-                (project_id,),
-            )
-            script_row = await cursor.fetchone()
-            project.has_script = script_row[0] > 0 if script_row else False
+            count_query = f"SELECT COUNT(*) FROM scripts WHERE project_id = {self._param(1)}"
+            script_count = await self._fetchval(conn, count_query, (project_id,))
+            project.has_script = (script_count or 0) > 0
 
-            cursor = await conn.execute(
-                "SELECT COUNT(*) FROM scenes WHERE project_id = ?",
-                (project_id,),
-            )
-            scene_row = await cursor.fetchone()
-            project.scene_count = scene_row[0] if scene_row else 0
+            count_query = f"SELECT COUNT(*) FROM scenes WHERE project_id = {self._param(1)}"
+            scene_count = await self._fetchval(conn, count_query, (project_id,))
+            project.scene_count = scene_count or 0
 
-            cursor = await conn.execute(
-                "SELECT SUM(total_shots) FROM shot_lists WHERE project_id = ?",
-                (project_id,),
-            )
-            shot_row = await cursor.fetchone()
-            project.shot_count = shot_row[0] if shot_row and shot_row[0] else 0
+            count_query = f"SELECT SUM(total_shots) FROM shot_lists WHERE project_id = {self._param(1)}"
+            shot_count = await self._fetchval(conn, count_query, (project_id,))
+            project.shot_count = shot_count or 0
 
             return project
 
@@ -315,36 +478,25 @@ class ProjectRepository:
             List of all ProjectModels.
         """
         async with self._db.connection() as conn:
-            cursor = await conn.execute(
-                "SELECT * FROM projects ORDER BY updated_at DESC"
-            )
-            rows = await cursor.fetchall()
+            query = "SELECT * FROM projects ORDER BY updated_at DESC"
+            rows = await self._fetchall(conn, query)
 
             projects = []
             for row in rows:
                 project = self._row_to_project(row)
 
                 # Get related counts
-                cursor = await conn.execute(
-                    "SELECT COUNT(*) FROM scripts WHERE project_id = ?",
-                    (project.id,),
-                )
-                script_row = await cursor.fetchone()
-                project.has_script = script_row[0] > 0 if script_row else False
+                count_query = f"SELECT COUNT(*) FROM scripts WHERE project_id = {self._param(1)}"
+                script_count = await self._fetchval(conn, count_query, (project.id,))
+                project.has_script = (script_count or 0) > 0
 
-                cursor = await conn.execute(
-                    "SELECT COUNT(*) FROM scenes WHERE project_id = ?",
-                    (project.id,),
-                )
-                scene_row = await cursor.fetchone()
-                project.scene_count = scene_row[0] if scene_row else 0
+                count_query = f"SELECT COUNT(*) FROM scenes WHERE project_id = {self._param(1)}"
+                scene_count = await self._fetchval(conn, count_query, (project.id,))
+                project.scene_count = scene_count or 0
 
-                cursor = await conn.execute(
-                    "SELECT SUM(total_shots) FROM shot_lists WHERE project_id = ?",
-                    (project.id,),
-                )
-                shot_row = await cursor.fetchone()
-                project.shot_count = shot_row[0] if shot_row and shot_row[0] else 0
+                count_query = f"SELECT SUM(total_shots) FROM shot_lists WHERE project_id = {self._param(1)}"
+                shot_count = await self._fetchval(conn, count_query, (project.id,))
+                project.shot_count = shot_count or 0
 
                 projects.append(project)
 
@@ -381,54 +533,72 @@ class ProjectRepository:
         # Build update query dynamically
         updates: list[str] = []
         values: list[Any] = []
+        param_idx = 1
 
         if title is not None:
-            updates.append("title = ?")
+            updates.append(f"title = {self._param(param_idx)}")
             values.append(title)
+            param_idx += 1
         if description is not None:
-            updates.append("description = ?")
+            updates.append(f"description = {self._param(param_idx)}")
             values.append(description)
+            param_idx += 1
         if genre is not None:
-            updates.append("genre = ?")
+            updates.append(f"genre = {self._param(param_idx)}")
             values.append(genre)
+            param_idx += 1
         if style_notes is not None:
-            updates.append("style_notes = ?")
+            updates.append(f"style_notes = {self._param(param_idx)}")
             values.append(style_notes)
+            param_idx += 1
         if status is not None:
-            updates.append("status = ?")
+            updates.append(f"status = {self._param(param_idx)}")
             values.append(status)
+            param_idx += 1
         if progress is not None:
-            updates.append("progress = ?")
+            updates.append(f"progress = {self._param(param_idx)}")
             values.append(progress)
+            param_idx += 1
         if current_step is not None:
-            updates.append("current_step = ?")
+            updates.append(f"current_step = {self._param(param_idx)}")
             values.append(current_step)
+            param_idx += 1
         if steps_completed is not None:
-            updates.append("steps_completed = ?")
-            values.append(_json_dumps(steps_completed))
+            updates.append(f"steps_completed = {self._param(param_idx)}")
+            values.append(self._serialize_json(steps_completed))
+            param_idx += 1
         if error_message is not None:
-            updates.append("error_message = ?")
+            updates.append(f"error_message = {self._param(param_idx)}")
             values.append(error_message)
+            param_idx += 1
         if processing_started_at is not None:
-            updates.append("processing_started_at = ?")
+            updates.append(f"processing_started_at = {self._param(param_idx)}")
             values.append(processing_started_at)
+            param_idx += 1
         if processing_completed_at is not None:
-            updates.append("processing_completed_at = ?")
+            updates.append(f"processing_completed_at = {self._param(param_idx)}")
             values.append(processing_completed_at)
+            param_idx += 1
 
         # Always update the timestamp
-        updates.append("updated_at = ?")
+        updates.append(f"updated_at = {self._param(param_idx)}")
         values.append(datetime.utcnow())
+        param_idx += 1
 
         values.append(project_id)
 
         async with self._db.connection() as conn:
-            cursor = await conn.execute(
-                f"UPDATE projects SET {', '.join(updates)} WHERE id = ?",
-                values,
-            )
-            if cursor.rowcount == 0:
-                raise NotFoundError("Project", project_id)
+            query = f"UPDATE projects SET {', '.join(updates)} WHERE id = {self._param(param_idx)}"
+
+            if self.backend == DatabaseBackend.POSTGRESQL:
+                result = await conn.execute(query, *values)
+                # Check if any rows were updated
+                if result == "UPDATE 0":
+                    raise NotFoundError("Project", project_id)
+            else:
+                cursor = await conn.execute(query, tuple(values))
+                if cursor.rowcount == 0:
+                    raise NotFoundError("Project", project_id)
 
         return await self.get_or_raise(project_id)
 
@@ -442,11 +612,14 @@ class ProjectRepository:
             True if deleted, False if not found.
         """
         async with self._db.connection() as conn:
-            cursor = await conn.execute(
-                "DELETE FROM projects WHERE id = ?",
-                (project_id,),
-            )
-            return cursor.rowcount > 0
+            query = f"DELETE FROM projects WHERE id = {self._param(1)}"
+
+            if self.backend == DatabaseBackend.POSTGRESQL:
+                result = await conn.execute(query, project_id)
+                return result != "DELETE 0"
+            else:
+                cursor = await conn.execute(query, (project_id,))
+                return cursor.rowcount > 0
 
     async def exists(self, project_id: str) -> bool:
         """Check if a project exists.
@@ -458,15 +631,16 @@ class ProjectRepository:
             True if project exists.
         """
         async with self._db.connection() as conn:
-            cursor = await conn.execute(
-                "SELECT 1 FROM projects WHERE id = ?",
-                (project_id,),
-            )
-            return await cursor.fetchone() is not None
+            query = f"SELECT 1 FROM projects WHERE id = {self._param(1)}"
+            row = await self._fetchone(conn, query, (project_id,))
+            return row is not None
 
-    def _row_to_project(self, row: Row) -> ProjectModel:
+    def _row_to_project(self, row: Any) -> ProjectModel:
         """Convert a database row to a ProjectModel."""
-        data = _row_to_dict(row)
+        data = _row_to_dict(row, self.backend)
+        # Convert UUID to string if needed
+        if "id" in data and not isinstance(data["id"], str):
+            data["id"] = str(data["id"])
         # Parse JSON fields
         if data.get("steps_completed"):
             data["steps_completed"] = _json_loads(data["steps_completed"])
@@ -475,7 +649,7 @@ class ProjectRepository:
         return ProjectModel(**data)
 
 
-class ScriptRepository:
+class ScriptRepository(BaseRepository):
     """Repository for script CRUD operations.
 
     Handles script content storage and retrieval, as well as
@@ -486,14 +660,6 @@ class ScriptRepository:
         await repo.save_script(project_id, content, "fountain")
         script = await repo.get_script(project_id)
     """
-
-    def __init__(self, database: Database | None = None):
-        """Initialize the repository.
-
-        Args:
-            database: Database instance. Uses global instance if not provided.
-        """
-        self._db = database or get_database()
 
     async def save_script(
         self,
@@ -520,31 +686,35 @@ class ScriptRepository:
 
         async with self._db.connection() as conn:
             # Check if script already exists for this project
-            cursor = await conn.execute(
-                "SELECT id FROM scripts WHERE project_id = ?",
-                (project_id,),
-            )
-            existing = await cursor.fetchone()
+            query = f"SELECT id FROM scripts WHERE project_id = {self._param(1)}"
+            existing = await self._fetchone(conn, query, (project_id,))
 
             if existing:
                 # Update existing script
-                await conn.execute(
-                    """
+                update_query = f"""
                     UPDATE scripts
-                    SET content = ?, format = ?, title = ?, author = ?, updated_at = ?
-                    WHERE project_id = ?
-                    """,
+                    SET content = {self._param(1)}, format = {self._param(2)},
+                        title = {self._param(3)}, author = {self._param(4)},
+                        updated_at = {self._param(5)}
+                    WHERE project_id = {self._param(6)}
+                """
+                await self._execute(
+                    conn,
+                    update_query,
                     (content, format, title, author, now, project_id),
                 )
-                script_id = existing[0]
+                # Get the existing script ID
+                script_id = str(existing[0]) if self.backend == DatabaseBackend.POSTGRESQL else existing[0]
             else:
                 # Insert new script
-                await conn.execute(
-                    """
+                insert_query = f"""
                     INSERT INTO scripts
                     (id, project_id, content, format, title, author, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
+                    VALUES ({self._params(8)})
+                """
+                await self._execute(
+                    conn,
+                    insert_query,
                     (script_id, project_id, content, format, title, author, now, now),
                 )
 
@@ -569,16 +739,19 @@ class ScriptRepository:
             The ScriptModel if found, None otherwise.
         """
         async with self._db.connection() as conn:
-            cursor = await conn.execute(
-                "SELECT * FROM scripts WHERE project_id = ?",
-                (project_id,),
-            )
-            row = await cursor.fetchone()
+            query = f"SELECT * FROM scripts WHERE project_id = {self._param(1)}"
+            row = await self._fetchone(conn, query, (project_id,))
 
             if row is None:
                 return None
 
-            return ScriptModel(**_row_to_dict(row))
+            data = _row_to_dict(row, self.backend)
+            # Convert UUIDs to strings
+            if "id" in data and not isinstance(data["id"], str):
+                data["id"] = str(data["id"])
+            if "project_id" in data and not isinstance(data["project_id"], str):
+                data["project_id"] = str(data["project_id"])
+            return ScriptModel(**data)
 
     async def update_parsed_info(
         self,
@@ -596,14 +769,13 @@ class ScriptRepository:
         now = datetime.utcnow()
 
         async with self._db.connection() as conn:
-            await conn.execute(
-                """
+            query = f"""
                 UPDATE scripts
-                SET title = ?, author = ?, parsed_at = ?, updated_at = ?
-                WHERE project_id = ?
-                """,
-                (title, author, now, now, project_id),
-            )
+                SET title = {self._param(1)}, author = {self._param(2)},
+                    parsed_at = {self._param(3)}, updated_at = {self._param(4)}
+                WHERE project_id = {self._param(5)}
+            """
+            await self._execute(conn, query, (title, author, now, now, project_id))
 
     async def save_scenes(
         self,
@@ -620,21 +792,21 @@ class ScriptRepository:
         """
         async with self._db.connection() as conn:
             # Delete existing scenes
-            await conn.execute(
-                "DELETE FROM scenes WHERE project_id = ?",
-                (project_id,),
-            )
+            delete_query = f"DELETE FROM scenes WHERE project_id = {self._param(1)}"
+            await self._execute(conn, delete_query, (project_id,))
 
             # Insert new scenes
             for scene in scenes:
                 scene_id = str(uuid4())
-                await conn.execute(
-                    """
+                insert_query = f"""
                     INSERT INTO scenes
                     (id, project_id, scene_number, heading, location, time_of_day,
                      int_ext, description, characters, dialogue, raw_content, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
+                    VALUES ({self._params(12)})
+                """
+                await self._execute(
+                    conn,
+                    insert_query,
                     (
                         scene_id,
                         project_id,
@@ -644,8 +816,8 @@ class ScriptRepository:
                         scene.time_of_day,
                         scene.int_ext,
                         scene.description,
-                        _json_dumps(scene.characters),
-                        _json_dumps(scene.dialogue),
+                        self._serialize_json(scene.characters),
+                        self._serialize_json(scene.dialogue),
                         scene.raw_content,
                         datetime.utcnow(),
                     ),
@@ -661,15 +833,12 @@ class ScriptRepository:
             List of SceneData.
         """
         async with self._db.connection() as conn:
-            cursor = await conn.execute(
-                "SELECT * FROM scenes WHERE project_id = ? ORDER BY scene_number",
-                (project_id,),
-            )
-            rows = await cursor.fetchall()
+            query = f"SELECT * FROM scenes WHERE project_id = {self._param(1)} ORDER BY scene_number"
+            rows = await self._fetchall(conn, query, (project_id,))
 
             scenes = []
             for row in rows:
-                data = _row_to_dict(row)
+                data = _row_to_dict(row, self.backend)
                 # Parse JSON fields
                 data["characters"] = _json_loads(data.get("characters", "[]"))
                 data["dialogue"] = _json_loads(data.get("dialogue", "[]"))
@@ -688,14 +857,17 @@ class ScriptRepository:
         """
         async with self._db.connection() as conn:
             # Scenes are deleted via CASCADE
-            cursor = await conn.execute(
-                "DELETE FROM scripts WHERE project_id = ?",
-                (project_id,),
-            )
-            return cursor.rowcount > 0
+            query = f"DELETE FROM scripts WHERE project_id = {self._param(1)}"
+
+            if self.backend == DatabaseBackend.POSTGRESQL:
+                result = await conn.execute(query, project_id)
+                return result != "DELETE 0"
+            else:
+                cursor = await conn.execute(query, (project_id,))
+                return cursor.rowcount > 0
 
 
-class GenerationRepository:
+class GenerationRepository(BaseRepository):
     """Repository for storing analysis results, shot lists, and storyboards.
 
     Handles all AI-generated content storage and retrieval.
@@ -705,14 +877,6 @@ class GenerationRepository:
         await repo.save_analyses(project_id, analyses, tone, motifs)
         await repo.save_shots(project_id, shots)
     """
-
-    def __init__(self, database: Database | None = None):
-        """Initialize the repository.
-
-        Args:
-            database: Database instance. Uses global instance if not provided.
-        """
-        self._db = database or get_database()
 
     # --- Analysis Methods ---
 
@@ -735,63 +899,65 @@ class GenerationRepository:
 
         async with self._db.connection() as conn:
             # Delete existing analyses
-            await conn.execute(
-                "DELETE FROM analyses WHERE project_id = ?",
-                (project_id,),
-            )
+            delete_query = f"DELETE FROM analyses WHERE project_id = {self._param(1)}"
+            await self._execute(conn, delete_query, (project_id,))
 
             # Insert new analyses
             for analysis in analyses:
                 analysis_id = str(uuid4())
-                await conn.execute(
-                    """
+                insert_query = f"""
                     INSERT INTO analyses
                     (id, project_id, scene_number, mood, themes, visual_style,
                      pacing, key_moments, color_palette, lighting_notes, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
+                    VALUES ({self._params(11)})
+                """
+                await self._execute(
+                    conn,
+                    insert_query,
                     (
                         analysis_id,
                         project_id,
                         analysis.scene_number,
                         analysis.mood,
-                        _json_dumps(analysis.themes),
+                        self._serialize_json(analysis.themes),
                         analysis.visual_style,
                         analysis.pacing,
-                        _json_dumps(analysis.key_moments),
-                        _json_dumps(analysis.color_palette),
+                        self._serialize_json(analysis.key_moments),
+                        self._serialize_json(analysis.color_palette),
                         analysis.lighting_notes,
                         now,
                     ),
                 )
 
             # Save or update project-level analysis
-            cursor = await conn.execute(
-                "SELECT id FROM project_analyses WHERE project_id = ?",
-                (project_id,),
-            )
-            existing = await cursor.fetchone()
+            check_query = f"SELECT id FROM project_analyses WHERE project_id = {self._param(1)}"
+            existing = await self._fetchone(conn, check_query, (project_id,))
 
             if existing:
-                await conn.execute(
-                    """
+                update_query = f"""
                     UPDATE project_analyses
-                    SET overall_tone = ?, visual_motifs = ?, updated_at = ?
-                    WHERE project_id = ?
-                    """,
-                    (overall_tone, _json_dumps(visual_motifs or []), now, project_id),
+                    SET overall_tone = {self._param(1)}, visual_motifs = {self._param(2)},
+                        updated_at = {self._param(3)}
+                    WHERE project_id = {self._param(4)}
+                """
+                await self._execute(
+                    conn,
+                    update_query,
+                    (overall_tone, self._serialize_json(visual_motifs or []), now, project_id),
                 )
             else:
                 pa_id = str(uuid4())
-                await conn.execute(
-                    """
+                insert_query = f"""
                     INSERT INTO project_analyses
                     (id, project_id, overall_tone, visual_motifs, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    """,
+                    VALUES ({self._params(6)})
+                """
+                await self._execute(
+                    conn,
+                    insert_query,
                     (
                         pa_id, project_id, overall_tone,
-                        _json_dumps(visual_motifs or []), now, now
+                        self._serialize_json(visual_motifs or []), now, now
                     ),
                 )
 
@@ -805,15 +971,12 @@ class GenerationRepository:
             List of SceneAnalysis.
         """
         async with self._db.connection() as conn:
-            cursor = await conn.execute(
-                "SELECT * FROM analyses WHERE project_id = ? ORDER BY scene_number",
-                (project_id,),
-            )
-            rows = await cursor.fetchall()
+            query = f"SELECT * FROM analyses WHERE project_id = {self._param(1)} ORDER BY scene_number"
+            rows = await self._fetchall(conn, query, (project_id,))
 
             analyses = []
             for row in rows:
-                data = _row_to_dict(row)
+                data = _row_to_dict(row, self.backend)
                 data["themes"] = _json_loads(data.get("themes", "[]"))
                 data["key_moments"] = _json_loads(data.get("key_moments", "[]"))
                 data["color_palette"] = _json_loads(data.get("color_palette", "[]"))
@@ -833,16 +996,16 @@ class GenerationRepository:
             Tuple of (overall_tone, visual_motifs).
         """
         async with self._db.connection() as conn:
-            cursor = await conn.execute(
-                "SELECT overall_tone, visual_motifs FROM project_analyses WHERE project_id = ?",
-                (project_id,),
-            )
-            row = await cursor.fetchone()
+            query = f"""
+                SELECT overall_tone, visual_motifs FROM project_analyses
+                WHERE project_id = {self._param(1)}
+            """
+            row = await self._fetchone(conn, query, (project_id,))
 
             if row is None:
                 return None, []
 
-            data = _row_to_dict(row)
+            data = _row_to_dict(row, self.backend)
             return data.get("overall_tone"), _json_loads(data.get("visual_motifs", "[]"))
 
     # --- Shot List Methods ---
@@ -864,10 +1027,8 @@ class GenerationRepository:
 
         async with self._db.connection() as conn:
             # Delete existing shot lists
-            await conn.execute(
-                "DELETE FROM shot_lists WHERE project_id = ?",
-                (project_id,),
-            )
+            delete_query = f"DELETE FROM shot_lists WHERE project_id = {self._param(1)}"
+            await self._execute(conn, delete_query, (project_id,))
 
             # Group shots by scene
             shots_by_scene: dict[int, list[ShotData]] = {}
@@ -882,20 +1043,22 @@ class GenerationRepository:
                 total_duration = sum(s.duration_seconds or 0 for s in scene_shots)
 
                 # Serialize shots to JSON
-                shots_json = _json_dumps([s.model_dump() for s in scene_shots])
+                shots_data = [s.model_dump() for s in scene_shots]
 
-                await conn.execute(
-                    """
+                insert_query = f"""
                     INSERT INTO shot_lists
                     (id, project_id, scene_number, shots, total_shots,
                      estimated_duration, style, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
+                    VALUES ({self._params(9)})
+                """
+                await self._execute(
+                    conn,
+                    insert_query,
                     (
                         shot_list_id,
                         project_id,
                         scene_number,
-                        shots_json,
+                        self._serialize_json(shots_data),
                         len(scene_shots),
                         total_duration if total_duration > 0 else None,
                         style,
@@ -914,17 +1077,14 @@ class GenerationRepository:
             List of ShotData.
         """
         async with self._db.connection() as conn:
-            cursor = await conn.execute(
-                "SELECT shots FROM shot_lists WHERE project_id = ? ORDER BY scene_number",
-                (project_id,),
-            )
-            rows = await cursor.fetchall()
+            query = f"SELECT shots FROM shot_lists WHERE project_id = {self._param(1)} ORDER BY scene_number"
+            rows = await self._fetchall(conn, query, (project_id,))
 
             all_shots = []
             for row in rows:
-                shots_json = row[0]
-                shots_data = _json_loads(shots_json)
-                for shot_dict in shots_data:
+                shots_data = row[0] if self.backend == DatabaseBackend.POSTGRESQL else row[0]
+                shots_list = _json_loads(shots_data)
+                for shot_dict in shots_list:
                     all_shots.append(ShotData(**shot_dict))
 
             return all_shots
@@ -939,12 +1099,9 @@ class GenerationRepository:
             Total number of shots.
         """
         async with self._db.connection() as conn:
-            cursor = await conn.execute(
-                "SELECT SUM(total_shots) FROM shot_lists WHERE project_id = ?",
-                (project_id,),
-            )
-            row = await cursor.fetchone()
-            return row[0] if row and row[0] else 0
+            query = f"SELECT SUM(total_shots) FROM shot_lists WHERE project_id = {self._param(1)}"
+            result = await self._fetchval(conn, query, (project_id,))
+            return result or 0
 
     async def get_estimated_duration(self, project_id: str) -> float | None:
         """Get total estimated duration for a project.
@@ -956,12 +1113,9 @@ class GenerationRepository:
             Total duration in seconds, or None.
         """
         async with self._db.connection() as conn:
-            cursor = await conn.execute(
-                "SELECT SUM(estimated_duration) FROM shot_lists WHERE project_id = ?",
-                (project_id,),
-            )
-            row = await cursor.fetchone()
-            return row[0] if row and row[0] else None
+            query = f"SELECT SUM(estimated_duration) FROM shot_lists WHERE project_id = {self._param(1)}"
+            result = await self._fetchval(conn, query, (project_id,))
+            return result if result else None
 
     # --- Storyboard Methods ---
 
@@ -984,26 +1138,26 @@ class GenerationRepository:
 
         async with self._db.connection() as conn:
             # Delete existing storyboard
-            await conn.execute(
-                "DELETE FROM storyboards WHERE project_id = ?",
-                (project_id,),
-            )
+            delete_query = f"DELETE FROM storyboards WHERE project_id = {self._param(1)}"
+            await self._execute(conn, delete_query, (project_id,))
 
             # Insert new storyboard
             storyboard_id = str(uuid4())
-            prompts_json = _json_dumps([p.model_dump() for p in prompts])
+            prompts_data = [p.model_dump() for p in prompts]
 
-            await conn.execute(
-                """
+            insert_query = f"""
                 INSERT INTO storyboards
                 (id, project_id, prompts, total_prompts, style, aspect_ratio,
                  created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
+                VALUES ({self._params(8)})
+            """
+            await self._execute(
+                conn,
+                insert_query,
                 (
                     storyboard_id,
                     project_id,
-                    prompts_json,
+                    self._serialize_json(prompts_data),
                     len(prompts),
                     style,
                     aspect_ratio,
@@ -1024,17 +1178,15 @@ class GenerationRepository:
             List of StoryboardPrompt.
         """
         async with self._db.connection() as conn:
-            cursor = await conn.execute(
-                "SELECT prompts FROM storyboards WHERE project_id = ?",
-                (project_id,),
-            )
-            row = await cursor.fetchone()
+            query = f"SELECT prompts FROM storyboards WHERE project_id = {self._param(1)}"
+            row = await self._fetchone(conn, query, (project_id,))
 
             if row is None:
                 return []
 
-            prompts_data = _json_loads(row[0])
-            return [StoryboardPrompt(**p) for p in prompts_data]
+            prompts_data = row[0] if self.backend == DatabaseBackend.POSTGRESQL else row[0]
+            prompts_list = _json_loads(prompts_data)
+            return [StoryboardPrompt(**p) for p in prompts_list]
 
     async def get_storyboard_count(self, project_id: str) -> int:
         """Get total storyboard prompt count for a project.
@@ -1046,9 +1198,6 @@ class GenerationRepository:
             Total number of prompts.
         """
         async with self._db.connection() as conn:
-            cursor = await conn.execute(
-                "SELECT total_prompts FROM storyboards WHERE project_id = ?",
-                (project_id,),
-            )
-            row = await cursor.fetchone()
-            return row[0] if row and row[0] else 0
+            query = f"SELECT total_prompts FROM storyboards WHERE project_id = {self._param(1)}"
+            result = await self._fetchval(conn, query, (project_id,))
+            return result or 0

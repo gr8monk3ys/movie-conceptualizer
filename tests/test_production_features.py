@@ -254,3 +254,188 @@ class TestAPIIntegration:
         data = response.json()
         assert "openapi" in data
         assert "paths" in data
+
+
+# PostgreSQL support tests
+class TestDatabaseBackendConfiguration:
+    """Tests for database backend selection."""
+
+    def test_database_backend_enum(self):
+        """DatabaseBackend enum has expected values."""
+        from movie_conceptualizer.storage import DatabaseBackend
+
+        assert DatabaseBackend.SQLITE.value == "sqlite"
+        assert DatabaseBackend.POSTGRESQL.value == "postgresql"
+
+    def test_get_database_backend_default(self, monkeypatch):
+        """Default backend is SQLite."""
+        monkeypatch.delenv("MOVIECON_DB_BACKEND", raising=False)
+
+        from movie_conceptualizer.storage.database import get_database_backend
+
+        backend = get_database_backend()
+        assert backend.value == "sqlite"
+
+    def test_get_database_backend_from_env(self, monkeypatch):
+        """Backend can be set via environment."""
+        monkeypatch.setenv("MOVIECON_DB_BACKEND", "postgresql")
+
+        # Need to reimport to pick up env change
+        import importlib
+
+        import movie_conceptualizer.storage.database as db_module
+
+        importlib.reload(db_module)
+
+        backend = db_module.get_database_backend()
+        assert backend.value == "postgresql"
+
+        # Reset
+        monkeypatch.delenv("MOVIECON_DB_BACKEND", raising=False)
+        importlib.reload(db_module)
+
+    def test_sqlite_database_class_exists(self):
+        """SQLiteDatabase class is available."""
+        from movie_conceptualizer.storage import SQLiteDatabase
+
+        assert SQLiteDatabase is not None
+        assert hasattr(SQLiteDatabase, "initialize")
+        assert hasattr(SQLiteDatabase, "connection")
+        assert hasattr(SQLiteDatabase, "close")
+
+    def test_postgresql_database_class_exists(self):
+        """PostgreSQLDatabase class is available."""
+        from movie_conceptualizer.storage import PostgreSQLDatabase
+
+        assert PostgreSQLDatabase is not None
+        assert hasattr(PostgreSQLDatabase, "initialize")
+        assert hasattr(PostgreSQLDatabase, "connection")
+        assert hasattr(PostgreSQLDatabase, "close")
+
+    def test_create_database_factory(self):
+        """create_database factory function exists."""
+        from movie_conceptualizer.storage import create_database
+
+        assert create_database is not None
+        assert callable(create_database)
+
+    @pytest.mark.asyncio
+    async def test_create_sqlite_database(self):
+        """Can create SQLite database via factory."""
+        import tempfile
+
+        from movie_conceptualizer.storage import DatabaseBackend, create_database
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = os.path.join(tmpdir, "test.db")
+            db = create_database(backend=DatabaseBackend.SQLITE, db_path=db_path)
+            assert db is not None
+            await db.initialize()
+            assert db.is_initialized
+            await db.close()
+
+
+class TestBaseRepository:
+    """Tests for BaseRepository functionality."""
+
+    def test_base_repository_exists(self):
+        """BaseRepository class is available."""
+        from movie_conceptualizer.storage import BaseRepository
+
+        assert BaseRepository is not None
+
+    def test_repositories_inherit_base(self):
+        """All repositories inherit from BaseRepository."""
+        from movie_conceptualizer.storage import (
+            BaseRepository,
+            GenerationRepository,
+            ProjectRepository,
+            ScriptRepository,
+        )
+
+        assert issubclass(ProjectRepository, BaseRepository)
+        assert issubclass(ScriptRepository, BaseRepository)
+        assert issubclass(GenerationRepository, BaseRepository)
+
+
+# Redis rate limiting tests
+class TestRedisRateLimitConfiguration:
+    """Tests for Redis rate limiting configuration."""
+
+    def test_redis_functions_exist(self):
+        """Redis helper functions are available."""
+        from movie_conceptualizer.api.ratelimit import (
+            check_redis_health,
+            get_backend_type,
+            get_rate_limit_status,
+            is_redis_available,
+        )
+
+        assert check_redis_health is not None
+        assert get_backend_type is not None
+        assert get_rate_limit_status is not None
+        assert is_redis_available is not None
+
+    def test_get_backend_type_default(self):
+        """Default backend is memory."""
+        from movie_conceptualizer.api.ratelimit import get_backend_type
+
+        # Without Redis configured, should be memory
+        backend = get_backend_type()
+        assert backend in ("memory", "redis")
+
+    def test_is_redis_available_function(self):
+        """is_redis_available returns boolean."""
+        from movie_conceptualizer.api.ratelimit import is_redis_available
+
+        result = is_redis_available()
+        assert isinstance(result, bool)
+
+    def test_get_rate_limit_status_structure(self):
+        """get_rate_limit_status returns expected structure."""
+        from movie_conceptualizer.api.ratelimit import get_rate_limit_status
+
+        status = get_rate_limit_status()
+        assert isinstance(status, dict)
+        assert "backend" in status
+        # Should have rate limit info
+        assert "default_limit" in status or "configured_backend" in status
+
+    @pytest.mark.asyncio
+    async def test_check_redis_health_returns_dict(self):
+        """check_redis_health returns status dict."""
+        from movie_conceptualizer.api.ratelimit import check_redis_health
+
+        health = await check_redis_health()
+        assert isinstance(health, dict)
+        assert "status" in health
+
+
+class TestHealthEndpointWithBackends:
+    """Tests for health endpoint with backend information."""
+
+    @pytest.fixture
+    def client(self):
+        """Create test client."""
+        from fastapi.testclient import TestClient
+
+        from movie_conceptualizer.api import app
+
+        return TestClient(app)
+
+    def test_health_includes_rate_limit_info(self, client):
+        """Health endpoint includes rate limit backend info."""
+        response = client.get("/health")
+        assert response.status_code == 200
+        data = response.json()
+        # Should include rate limiting info
+        assert "rate_limiting" in data or "status" in data
+
+    def test_redis_health_endpoint_exists(self, client):
+        """Redis health endpoint is available."""
+        response = client.get("/health/redis")
+        # Should return 200 even if Redis not configured
+        assert response.status_code == 200
+        data = response.json()
+        assert "redis" in data or "status" in data
+

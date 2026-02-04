@@ -11,8 +11,9 @@ Transform your screenplay into professional pre-production materials using multi
 - **Shot Designer**: Automated shot list generation with film grammar awareness
 - **Storyboard Artist**: Generate detailed image prompts for each shot
 - **Full Pipeline**: End-to-end workflow from script to storyboard
-- **REST API**: FastAPI-based API for integration
+- **REST API**: FastAPI-based API with JWT authentication and rate limiting
 - **CLI**: Command-line interface for local processing
+- **Production Ready**: PostgreSQL support, Redis rate limiting, configurable backends
 
 ## Installation
 
@@ -21,11 +22,20 @@ Transform your screenplay into professional pre-production materials using multi
 git clone https://github.com/gr8monk3ys/movie-conceptualizer.git
 cd movie-conceptualizer
 
-# Install dependencies
+# Install with uv (recommended)
+uv sync
+
+# Or with pip
 pip install -e .
 
-# For development
-pip install -e ".[dev]"
+# With PostgreSQL support
+pip install -e ".[postgresql]"
+
+# With Redis support
+pip install -e ".[redis]"
+
+# All extras (dev + postgresql + redis)
+pip install -e ".[dev,postgresql,redis]"
 ```
 
 ## Quick Start
@@ -89,10 +99,14 @@ uvicorn movie_conceptualizer.api.main:app --reload
 ```
 
 API endpoints:
+- `POST /api/v1/auth/token` - Get JWT token
+- `POST /api/v1/auth/register` - Register new user
 - `POST /api/v1/projects` - Create project
 - `POST /api/v1/projects/{id}/script` - Upload script
 - `POST /api/v1/projects/{id}/generate` - Run full pipeline
 - `GET /api/v1/projects/{id}/export/shotlist` - Export shot list
+- `GET /health` - Health check with backend status
+- `GET /health/redis` - Redis-specific health check
 
 API docs available at `http://localhost:8000/docs`
 
@@ -116,8 +130,13 @@ movie_conceptualizer/
 ├── workflows/        # LangGraph orchestration
 │   ├── state.py      # Pipeline state definitions
 │   └── pipeline.py   # Multi-agent workflow
+├── storage/          # Database backends
+│   ├── database.py   # SQLite & PostgreSQL support
+│   └── repositories.py # Repository pattern
 ├── api/              # FastAPI REST API
 │   ├── main.py       # Application setup
+│   ├── auth.py       # JWT authentication
+│   ├── ratelimit.py  # Rate limiting (memory/Redis)
 │   └── routes/       # API endpoints
 └── cli.py            # Command-line interface
 ```
@@ -130,6 +149,63 @@ The platform uses LangGraph to orchestrate three specialized AI agents:
 2. **Shot Designer**: Generates shot lists with appropriate shot types based on scene analysis
 3. **Storyboard Artist**: Creates detailed image prompts maintaining character consistency
 
+## Configuration
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| **AI** | | |
+| `ANTHROPIC_API_KEY` | - | Claude API key (required for AI features) |
+| `OPENAI_API_KEY` | - | OpenAI API key (optional) |
+| **Database** | | |
+| `MOVIECON_DB_BACKEND` | `sqlite` | Database backend (`sqlite` or `postgresql`) |
+| `MOVIECON_DB_PATH` | `~/.movie-conceptualizer/data.db` | SQLite database path |
+| `MOVIECON_DATABASE_URL` | - | PostgreSQL connection string |
+| `DATABASE_URL` | - | Fallback PostgreSQL URL |
+| `MOVIECON_DB_POOL_SIZE` | `5` | PostgreSQL connection pool size |
+| **Authentication** | | |
+| `MOVIECON_SECRET_KEY` | (random) | JWT signing key |
+| `MOVIECON_REQUIRE_AUTH` | `false` | Require authentication |
+| `MOVIECON_DEV_MODE` | `true` | Enable dev mode (creates test user) |
+| `MOVIECON_TOKEN_EXPIRE_MINUTES` | `30` | JWT token expiration |
+| **Rate Limiting** | | |
+| `MOVIECON_RATE_LIMIT_BACKEND` | `memory` | Backend (`memory` or `redis`) |
+| `MOVIECON_RATE_LIMIT` | `100/minute` | Default rate limit |
+| `MOVIECON_RATE_LIMIT_GENERATION` | `10/minute` | AI endpoint limit |
+| `MOVIECON_REDIS_URL` | `redis://localhost:6379/0` | Redis connection URL |
+| `MOVIECON_REDIS_PREFIX` | `moviecon:ratelimit:` | Redis key prefix |
+
+### Database Configuration
+
+**SQLite (default):**
+```bash
+# No configuration needed - uses ~/.movie-conceptualizer/data.db
+moviecon serve
+```
+
+**PostgreSQL:**
+```bash
+export MOVIECON_DB_BACKEND=postgresql
+export MOVIECON_DATABASE_URL=postgresql://user:pass@localhost:5432/moviecon
+moviecon serve
+```
+
+### Rate Limiting Configuration
+
+**In-Memory (default):**
+```bash
+# No configuration needed
+moviecon serve
+```
+
+**Redis:**
+```bash
+export MOVIECON_RATE_LIMIT_BACKEND=redis
+export MOVIECON_REDIS_URL=redis://localhost:6379/0
+moviecon serve
+```
+
 ## Supported Formats
 
 **Input:**
@@ -140,29 +216,46 @@ The platform uses LangGraph to orchestrate three specialized AI agents:
 - JSON - Structured data for all outputs
 - PDF - Shot lists and storyboard packets (planned)
 
-## Environment Variables
-
-```bash
-ANTHROPIC_API_KEY=your-key-here  # For Claude models
-OPENAI_API_KEY=your-key-here     # For OpenAI models (optional)
-```
-
 ## Development
 
 ```bash
-# Run tests
-pytest
+# Run tests (109 tests)
+uv run pytest
 
 # Type checking
-mypy src
+uv run mypy src
 
 # Linting
-ruff check src
+uv run ruff check src
+
+# Format code
+uv run ruff format src
+```
+
+## Production Deployment
+
+```bash
+# Install with production extras
+pip install movie-conceptualizer[postgresql,redis]
+
+# Configure environment
+export MOVIECON_DB_BACKEND=postgresql
+export MOVIECON_DATABASE_URL=postgresql://user:pass@db:5432/moviecon
+export MOVIECON_RATE_LIMIT_BACKEND=redis
+export MOVIECON_REDIS_URL=redis://redis:6379/0
+export MOVIECON_REQUIRE_AUTH=true
+export MOVIECON_SECRET_KEY=your-secure-secret-key
+export ANTHROPIC_API_KEY=your-api-key
+
+# Run with gunicorn
+gunicorn movie_conceptualizer.api.main:app -k uvicorn.workers.UvicornWorker -w 4
 ```
 
 ## Roadmap
 
-- [ ] Phase 1: Script → Shot List → Storyboard (current)
+- [x] Phase 1: Script → Shot List → Storyboard
+- [x] Production hardening: SQLite, JWT auth, rate limiting
+- [x] PostgreSQL & Redis backends
 - [ ] Phase 2: Blocking diagrams + video animatics
 - [ ] Phase 3: Production scheduling + budgeting
 - [ ] Phase 4: Collaboration + enterprise features
