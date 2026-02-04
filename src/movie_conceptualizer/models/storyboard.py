@@ -12,14 +12,14 @@ tracking and style guidelines for coherent visual storytelling.
 from __future__ import annotations
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 
 
-class StoryboardStyle(str, Enum):
+class StoryboardStyle(StrEnum):
     """Visual styles for storyboard generation.
 
     Different styles can be used to match the tone of the film
@@ -39,7 +39,7 @@ class StoryboardStyle(str, Enum):
     DIGITAL_PAINT = "digital_paint"  # Digital painting style
 
 
-class AspectRatio(str, Enum):
+class AspectRatio(StrEnum):
     """Standard aspect ratios for storyboard frames.
 
     Should match the intended final aspect ratio of the film.
@@ -55,7 +55,7 @@ class AspectRatio(str, Enum):
     RATIO_1_33_1 = "1.33:1"  # Classic 35mm
 
 
-class FrameStatus(str, Enum):
+class FrameStatus(StrEnum):
     """Status of a storyboard frame in the workflow."""
 
     PENDING = "pending"  # Not yet generated

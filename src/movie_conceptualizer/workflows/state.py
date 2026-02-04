@@ -126,7 +126,7 @@ class PipelineResult(BaseModel):
     success: bool = Field(description="Whether the pipeline completed successfully")
 
     @classmethod
-    def from_state(cls, state: PipelineState) -> "PipelineResult":
+    def from_state(cls, state: PipelineState) -> PipelineResult:
         """Create a PipelineResult from a PipelineState.
 
         Args:

@@ -7,15 +7,12 @@ composition, lighting, and mood.
 
 from __future__ import annotations
 
-from typing import Any
-
 from pydantic import BaseModel, Field
 
 from movie_conceptualizer.agents.base import BaseAgent
 from movie_conceptualizer.models.analysis import (
     AnalyzedScene,
     CameraAngle,
-    CameraMovement,
     CharacterVisualDescription,
     Shot,
     ShotList,

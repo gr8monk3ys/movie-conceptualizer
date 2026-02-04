@@ -10,8 +10,6 @@ This agent takes a parsed script and analyzes each scene to extract:
 
 from __future__ import annotations
 
-from typing import Any
-
 from movie_conceptualizer.agents.base import BaseAgent
 from movie_conceptualizer.models import (
     AnalyzedScene,

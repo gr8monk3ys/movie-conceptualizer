@@ -11,13 +11,24 @@ import os
 from abc import ABC, abstractmethod
 from typing import Any, TypeVar
 
-from langchain_anthropic import ChatAnthropic
+from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel
 
 # Type variable for structured output
 T = TypeVar("T", bound=BaseModel)
+
+
+class APIKeyNotFoundError(Exception):
+    """Raised when no API key is available for LLM initialization."""
+
+    def __init__(self, provider: str = "Anthropic"):
+        self.provider = provider
+        super().__init__(
+            f"No {provider} API key found. Please set the ANTHROPIC_API_KEY "
+            "environment variable or pass api_key to the agent constructor."
+        )
 
 
 class BaseAgent(ABC):
@@ -28,6 +39,9 @@ class BaseAgent(ABC):
     - Structured output generation with Pydantic models
     - Error handling and retry logic
     - Consistent prompting patterns
+
+    The LLM is initialized lazily on first access, allowing agent creation
+    without immediately requiring an API key.
     """
 
     def __init__(
@@ -44,24 +58,71 @@ class BaseAgent(ABC):
             temperature: Sampling temperature (0.0 to 1.0)
             max_tokens: Maximum tokens in response
             api_key: Anthropic API key (defaults to ANTHROPIC_API_KEY env var)
+
+        Note:
+            The LLM is initialized lazily on first access to the `llm` property.
+            This allows creating agent instances without immediately requiring
+            an API key (useful for testing, configuration, etc.).
         """
         self.model_name = model_name
         self.temperature = temperature
         self.max_tokens = max_tokens
-        self._api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
+        self._api_key = api_key
+        self._llm: BaseChatModel | None = None
 
-        # Initialize the LLM
-        self._llm = ChatAnthropic(
-            model=model_name,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            api_key=self._api_key,
+    def _get_api_key(self) -> str:
+        """Get the API key, checking environment if not explicitly set."""
+        if self._api_key:
+            return self._api_key
+        env_key = os.environ.get("ANTHROPIC_API_KEY")
+        if env_key:
+            return env_key
+        raise APIKeyNotFoundError("Anthropic")
+
+    def _init_llm(self) -> BaseChatModel:
+        """Initialize the LLM instance.
+
+        Returns:
+            Configured ChatAnthropic instance
+
+        Raises:
+            APIKeyNotFoundError: If no API key is available
+        """
+        from langchain_anthropic import ChatAnthropic
+
+        api_key = self._get_api_key()
+        return ChatAnthropic(
+            model=self.model_name,
+            temperature=self.temperature,
+            max_tokens=self.max_tokens,
+            api_key=api_key,
         )
 
     @property
-    def llm(self) -> ChatAnthropic:
-        """Get the underlying LLM instance."""
+    def llm(self) -> BaseChatModel:
+        """Get the underlying LLM instance (lazy initialization).
+
+        Returns:
+            The configured LLM instance
+
+        Raises:
+            APIKeyNotFoundError: If no API key is available
+        """
+        if self._llm is None:
+            self._llm = self._init_llm()
         return self._llm
+
+    def is_configured(self) -> bool:
+        """Check if the agent has a valid API key configured.
+
+        Returns:
+            True if an API key is available (either explicit or from env)
+        """
+        try:
+            self._get_api_key()
+            return True
+        except APIKeyNotFoundError:
+            return False
 
     @property
     @abstractmethod

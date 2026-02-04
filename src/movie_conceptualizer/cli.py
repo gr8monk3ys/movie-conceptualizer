@@ -1,9 +1,7 @@
 """Command-line interface for Movie Conceptualizer."""
 
 import json
-import sys
 from pathlib import Path
-from typing import Optional
 
 import typer
 from rich.console import Console
@@ -22,11 +20,11 @@ console = Console()
 @app.command()
 def parse(
     script_path: Path = typer.Argument(..., help="Path to screenplay file (.fountain)"),
-    output: Optional[Path] = typer.Option(None, "-o", "--output", help="Output JSON file"),
+    output: Path | None = typer.Option(None, "-o", "--output", help="Output JSON file"),
     verbose: bool = typer.Option(False, "-v", "--verbose", help="Show detailed output"),
 ) -> None:
     """Parse a screenplay file and extract structure."""
-    from movie_conceptualizer.parsers import load_script, get_script_summary, validate_script
+    from movie_conceptualizer.parsers import get_script_summary, load_script, validate_script
 
     if not script_path.exists():
         console.print(f"[red]Error:[/red] File not found: {script_path}")
@@ -78,12 +76,12 @@ def parse(
 @app.command()
 def analyze(
     script_path: Path = typer.Argument(..., help="Path to screenplay file"),
-    output: Optional[Path] = typer.Option(None, "-o", "--output", help="Output JSON file"),
+    output: Path | None = typer.Option(None, "-o", "--output", help="Output JSON file"),
     model: str = typer.Option("claude-sonnet-4-20250514", "-m", "--model", help="LLM model to use"),
 ) -> None:
     """Analyze a screenplay with AI to extract emotional beats and visual opportunities."""
-    from movie_conceptualizer.parsers import load_script
     from movie_conceptualizer.agents import ScriptAnalyzerAgent
+    from movie_conceptualizer.parsers import load_script
 
     if not script_path.exists():
         console.print(f"[red]Error:[/red] File not found: {script_path}")
@@ -131,12 +129,12 @@ def analyze(
 @app.command()
 def shots(
     script_path: Path = typer.Argument(..., help="Path to screenplay file"),
-    output: Optional[Path] = typer.Option(None, "-o", "--output", help="Output JSON file"),
+    output: Path | None = typer.Option(None, "-o", "--output", help="Output JSON file"),
     model: str = typer.Option("claude-sonnet-4-20250514", "-m", "--model", help="LLM model to use"),
 ) -> None:
     """Generate shot lists from a screenplay."""
-    from movie_conceptualizer.parsers import load_script
     from movie_conceptualizer.agents import ScriptAnalyzerAgent, ShotDesignerAgent
+    from movie_conceptualizer.parsers import load_script
 
     if not script_path.exists():
         console.print(f"[red]Error:[/red] File not found: {script_path}")
@@ -200,17 +198,17 @@ def shots(
 @app.command()
 def storyboard(
     script_path: Path = typer.Argument(..., help="Path to screenplay file"),
-    output: Optional[Path] = typer.Option(None, "-o", "--output", help="Output JSON file"),
+    output: Path | None = typer.Option(None, "-o", "--output", help="Output JSON file"),
     model: str = typer.Option("claude-sonnet-4-20250514", "-m", "--model", help="LLM model to use"),
     style: str = typer.Option("cinematic", "-s", "--style", help="Visual style for prompts"),
 ) -> None:
     """Generate storyboard image prompts from a screenplay."""
-    from movie_conceptualizer.parsers import load_script
     from movie_conceptualizer.agents import (
         ScriptAnalyzerAgent,
         ShotDesignerAgent,
         StoryboardArtistAgent,
     )
+    from movie_conceptualizer.parsers import load_script
 
     if not script_path.exists():
         console.print(f"[red]Error:[/red] File not found: {script_path}")
@@ -271,7 +269,7 @@ def pipeline(
 ) -> None:
     """Run the full pipeline: parse → analyze → shots → storyboard."""
     from movie_conceptualizer.parsers import load_script
-    from movie_conceptualizer.workflows import run_pipeline, PipelineConfig
+    from movie_conceptualizer.workflows import PipelineConfig, run_pipeline
 
     if not script_path.exists():
         console.print(f"[red]Error:[/red] File not found: {script_path}")

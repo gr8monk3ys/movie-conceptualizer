@@ -6,11 +6,10 @@ including files and raw text strings.
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from movie_conceptualizer.models import Script
+from movie_conceptualizer.models import SceneType, Script
 from movie_conceptualizer.parsers.fountain_parser import FountainParser
 
 if TYPE_CHECKING:
@@ -324,7 +323,3 @@ def get_script_summary(script: Script) -> dict:
         "has_title_page": script.title_page.title is not None,
         "authors": script.title_page.authors,
     }
-
-
-# Import SceneType for summary function
-from movie_conceptualizer.models import SceneType

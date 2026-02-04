@@ -17,6 +17,59 @@ Example usage:
 """
 
 # Core models
+# Analysis models (for script analysis and legacy compatibility)
+from movie_conceptualizer.models.analysis import (
+    AnalyzedScene,
+    AnalyzedScript,
+    CameraAngle,
+    CharacterVisualDescription,
+    DramaticMoment,
+    EmotionalTone,
+    LightingStyle,
+    PacingType,
+    VisualEmphasisPoint,
+)
+
+# Import analysis versions with aliases for backward compatibility
+from movie_conceptualizer.models.analysis import (
+    CameraMovement as AnalysisCameraMovement,
+)
+from movie_conceptualizer.models.analysis import (
+    EmotionalBeat as AnalysisEmotionalBeat,
+)
+from movie_conceptualizer.models.analysis import (
+    Shot as AnalysisShot,
+)
+from movie_conceptualizer.models.analysis import (
+    ShotList as AnalysisShotList,
+)
+from movie_conceptualizer.models.analysis import (
+    ShotType as AnalysisShotType,
+)
+from movie_conceptualizer.models.analysis import (
+    Storyboard as AnalysisStoryboard,
+)
+from movie_conceptualizer.models.analysis import (
+    StoryboardFrame as AnalysisStoryboardFrame,
+)
+
+# Blocking diagram models
+from movie_conceptualizer.models.blocking import (
+    BlockingDiagram,
+    CameraSetup,
+    CameraSetupList,
+    CharacterPosition,
+    CharacterPositionList,
+    Coordinate,
+    EntityType,
+    FacingDirection,
+    FloorPlanElement,
+    Movement,
+    MovementList,
+    MovementType,
+    SceneBlockingSet,
+    StagePosition,
+)
 from movie_conceptualizer.models.core import (
     ActionBlock,
     BreakdownCategory,
@@ -66,47 +119,6 @@ from movie_conceptualizer.models.storyboard import (
     StoryboardStyle,
     StyleGuidelines,
     VisualTrait,
-)
-
-# Blocking diagram models
-from movie_conceptualizer.models.blocking import (
-    BlockingDiagram,
-    CameraSetup,
-    CameraSetupList,
-    CharacterPosition,
-    CharacterPositionList,
-    Coordinate,
-    EntityType,
-    FacingDirection,
-    FloorPlanElement,
-    Movement,
-    MovementList,
-    MovementType,
-    SceneBlockingSet,
-    StagePosition,
-)
-
-# Analysis models (for script analysis and legacy compatibility)
-from movie_conceptualizer.models.analysis import (
-    AnalyzedScene,
-    AnalyzedScript,
-    CameraAngle,
-    CharacterVisualDescription,
-    DramaticMoment,
-    EmotionalTone,
-    LightingStyle,
-    PacingType,
-    VisualEmphasisPoint,
-)
-# Import analysis versions with aliases for backward compatibility
-from movie_conceptualizer.models.analysis import (
-    CameraMovement as AnalysisCameraMovement,
-    Shot as AnalysisShot,
-    ShotList as AnalysisShotList,
-    ShotType as AnalysisShotType,
-    Storyboard as AnalysisStoryboard,
-    StoryboardFrame as AnalysisStoryboardFrame,
-    EmotionalBeat as AnalysisEmotionalBeat,
 )
 
 __all__ = [

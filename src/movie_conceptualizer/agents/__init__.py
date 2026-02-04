@@ -8,7 +8,7 @@ screenplay-to-storyboard pipeline:
 - StoryboardArtistAgent: Generates image prompts for storyboard frames
 """
 
-from movie_conceptualizer.agents.base import BaseAgent
+from movie_conceptualizer.agents.base import APIKeyNotFoundError, BaseAgent
 from movie_conceptualizer.agents.script_analyzer import (
     ScriptAnalyzerAgent,
     aanalyze_script,
@@ -28,6 +28,7 @@ from movie_conceptualizer.agents.storyboard_artist import (
 __all__ = [
     # Base
     "BaseAgent",
+    "APIKeyNotFoundError",
     # Script Analyzer
     "ScriptAnalyzerAgent",
     "analyze_script",

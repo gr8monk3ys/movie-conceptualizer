@@ -8,21 +8,21 @@ for robust validation, serialization, and type safety.
 from __future__ import annotations
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 
 
-class ProjectType(str, Enum):
+class ProjectType(StrEnum):
     """Type of film project based on length."""
 
     SHORT = "short"
     FEATURE = "feature"
 
 
-class Genre(str, Enum):
+class Genre(StrEnum):
     """Common film genres for categorization."""
 
     ACTION = "action"
@@ -43,7 +43,7 @@ class Genre(str, Enum):
     EXPERIMENTAL = "experimental"
 
 
-class SceneType(str, Enum):
+class SceneType(StrEnum):
     """Type of scene based on location prefix (INT/EXT)."""
 
     INTERIOR = "INT"
@@ -52,7 +52,7 @@ class SceneType(str, Enum):
     UNKNOWN = "UNKNOWN"
 
 
-class TimeOfDay(str, Enum):
+class TimeOfDay(StrEnum):
     """Time of day for a scene setting."""
 
     DAY = "DAY"
@@ -68,7 +68,7 @@ class TimeOfDay(str, Enum):
     UNKNOWN = "UNKNOWN"
 
 
-class BreakdownCategory(str, Enum):
+class BreakdownCategory(StrEnum):
     """Categories for production breakdown elements.
 
     These categories align with industry-standard script breakdown sheets
@@ -97,7 +97,7 @@ class BreakdownCategory(str, Enum):
     NOTES = "notes"
 
 
-class EmotionalBeat(str, Enum):
+class EmotionalBeat(StrEnum):
     """Emotional beats for AI cinematography decisions.
 
     These help inform shot selection and camera movement choices

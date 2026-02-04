@@ -12,14 +12,13 @@ and film grammar rules (180-degree rule, eyeline matching, etc.).
 
 from __future__ import annotations
 
-from enum import Enum
-from typing import Any
+from enum import StrEnum
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
 
 
-class ShotType(str, Enum):
+class ShotType(StrEnum):
     """Types of camera shots based on framing.
 
     These shot types follow standard cinematography terminology and
@@ -58,7 +57,7 @@ class ShotType(str, Enum):
     CHOKER = "choker"  # Tighter than close-up, chin to forehead
 
 
-class CameraMovement(str, Enum):
+class CameraMovement(StrEnum):
     """Camera movement types for dynamic cinematography.
 
     These movements are used to suggest camera motion that supports
@@ -103,7 +102,7 @@ class CameraMovement(str, Enum):
     REVEAL = "reveal"  # Movement that reveals new information
 
 
-class ShotSize(str, Enum):
+class ShotSize(StrEnum):
     """Shot size classification for quick reference.
 
     A simplified categorization used for filtering and sorting shots.
@@ -115,7 +114,7 @@ class ShotSize(str, Enum):
     DETAIL = "detail"
 
 
-class ShotPurpose(str, Enum):
+class ShotPurpose(StrEnum):
     """The narrative purpose of a shot.
 
     Helps the AI understand why a particular shot is being used
@@ -313,7 +312,7 @@ class ShotList(BaseModel):
     )
 
     @model_validator(mode="after")
-    def update_shots_scene_id(self) -> "ShotList":
+    def update_shots_scene_id(self) -> ShotList:
         """Ensure all shots have the correct scene_id."""
         for shot in self.shots:
             if shot.scene_id is None:

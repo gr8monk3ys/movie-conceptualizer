@@ -27,7 +27,6 @@ from movie_conceptualizer.workflows.state import (
     create_initial_state,
 )
 
-
 # ============================================================================
 # Node Functions
 # ============================================================================
@@ -302,7 +301,7 @@ def human_review_analysis(state: PipelineState) -> PipelineState:
 
     # Interrupt for human review
     # The human can approve, modify, or reject the analysis
-    review_result = interrupt(
+    interrupt(
         {
             "message": "Review scene analysis before proceeding to shot design",
             "scenes_analyzed": len(analyzed_scenes),
@@ -345,7 +344,7 @@ def human_review_shots(state: PipelineState) -> PipelineState:
 
     total_shots = sum(len(sl.shots) for sl in shot_lists)
 
-    review_result = interrupt(
+    interrupt(
         {
             "message": "Review shot lists before proceeding to storyboard creation",
             "total_shots": total_shots,
@@ -676,8 +675,7 @@ def stream_pipeline(
     if thread_id and config.enable_checkpoints:
         run_config["configurable"] = {"thread_id": thread_id}
 
-    for event in pipeline.stream(initial_state, run_config):
-        yield event
+    yield from pipeline.stream(initial_state, run_config)
 
 
 async def astream_pipeline(

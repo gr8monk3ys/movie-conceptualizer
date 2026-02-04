@@ -13,14 +13,13 @@ awareness (180-degree rule, sight lines, etc.) rendered as SVG.
 from __future__ import annotations
 
 from datetime import datetime
-from enum import Enum
-from typing import Any
+from enum import StrEnum
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 
 
-class FacingDirection(str, Enum):
+class FacingDirection(StrEnum):
     """Cardinal and intercardinal facing directions.
 
     Used to indicate which way a character is facing in the blocking diagram.
@@ -37,7 +36,7 @@ class FacingDirection(str, Enum):
     CAMERA = "camera"  # Directly facing camera
 
 
-class StagePosition(str, Enum):
+class StagePosition(StrEnum):
     """Traditional stage positions for blocking.
 
     Standard theatrical terminology used in film blocking.
@@ -54,7 +53,7 @@ class StagePosition(str, Enum):
     UPSTAGE_RIGHT = "upstage_right"  # Farthest from camera, right
 
 
-class EntityType(str, Enum):
+class EntityType(StrEnum):
     """Types of entities that can be positioned in a blocking diagram."""
 
     CHARACTER = "character"
@@ -65,7 +64,7 @@ class EntityType(str, Enum):
     MARKER = "marker"
 
 
-class MovementType(str, Enum):
+class MovementType(StrEnum):
     """Types of movement for characters and cameras."""
 
     WALK = "walk"
@@ -106,11 +105,11 @@ class Coordinate(BaseModel):
     x: float = Field(..., ge=0, le=100, description="X coordinate (0-100)")
     y: float = Field(..., ge=0, le=100, description="Y coordinate (0-100)")
 
-    def distance_to(self, other: "Coordinate") -> float:
+    def distance_to(self, other: Coordinate) -> float:
         """Calculate distance to another coordinate."""
         return ((self.x - other.x) ** 2 + (self.y - other.y) ** 2) ** 0.5
 
-    def midpoint(self, other: "Coordinate") -> "Coordinate":
+    def midpoint(self, other: Coordinate) -> Coordinate:
         """Calculate midpoint between this and another coordinate."""
         return Coordinate(
             x=(self.x + other.x) / 2,

@@ -1,14 +1,14 @@
 """API request/response schemas using Pydantic models."""
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 
 # Enums for status tracking
-class ProjectStatus(str, Enum):
+class ProjectStatus(StrEnum):
     """Project processing status."""
 
     CREATED = "created"
@@ -24,7 +24,7 @@ class ProjectStatus(str, Enum):
     ERROR = "error"
 
 
-class ExportFormat(str, Enum):
+class ExportFormat(StrEnum):
     """Export format options."""
 
     JSON = "json"
@@ -137,7 +137,7 @@ class AnalysisResponse(BaseModel):
     visual_motifs: list[str] = Field(default_factory=list, description="Recurring visual motifs")
 
 
-class ShotType(str, Enum):
+class ShotType(StrEnum):
     """Camera shot types."""
 
     WIDE = "wide"
@@ -156,7 +156,7 @@ class ShotType(str, Enum):
     AERIAL = "aerial"
 
 
-class CameraMovement(str, Enum):
+class CameraMovement(StrEnum):
     """Camera movement types."""
 
     STATIC = "static"

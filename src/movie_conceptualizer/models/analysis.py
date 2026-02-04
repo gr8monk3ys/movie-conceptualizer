@@ -6,17 +6,16 @@ emotional analysis, shot lists, and storyboard frames.
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, Field
-
 
 # ============================================================================
 # Enums for structured data
 # ============================================================================
 
 
-class EmotionalTone(str, Enum):
+class EmotionalTone(StrEnum):
     """Emotional tone categories for scenes."""
 
     TENSE = "tense"
@@ -34,7 +33,7 @@ class EmotionalTone(str, Enum):
     NEUTRAL = "neutral"
 
 
-class PacingType(str, Enum):
+class PacingType(StrEnum):
     """Pacing categories for scenes."""
 
     SLOW = "slow"
@@ -44,7 +43,7 @@ class PacingType(str, Enum):
     CLIMACTIC = "climactic"
 
 
-class ShotType(str, Enum):
+class ShotType(StrEnum):
     """Standard cinematographic shot types."""
 
     EXTREME_WIDE = "extreme_wide"
@@ -62,7 +61,7 @@ class ShotType(str, Enum):
     CUTAWAY = "cutaway"
 
 
-class CameraMovement(str, Enum):
+class CameraMovement(StrEnum):
     """Camera movement types."""
 
     STATIC = "static"
@@ -79,7 +78,7 @@ class CameraMovement(str, Enum):
     ARC = "arc"
 
 
-class CameraAngle(str, Enum):
+class CameraAngle(StrEnum):
     """Camera angle types."""
 
     EYE_LEVEL = "eye_level"
@@ -90,7 +89,7 @@ class CameraAngle(str, Enum):
     DUTCH_ANGLE = "dutch_angle"
 
 
-class LightingStyle(str, Enum):
+class LightingStyle(StrEnum):
     """Lighting style categories."""
 
     HIGH_KEY = "high_key"
