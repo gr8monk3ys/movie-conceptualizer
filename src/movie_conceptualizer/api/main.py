@@ -1,17 +1,33 @@
 """FastAPI application for Movie Conceptualizer API."""
 
+import os
 from datetime import datetime
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi.errors import RateLimitExceeded
 
+from movie_conceptualizer.api.ratelimit import (
+    DEFAULT_RATE_LIMIT,
+    limiter,
+    rate_limit_exceeded_handler,
+)
 from movie_conceptualizer.api.routes import (
+    auth_router,
     export_router,
     generation_router,
     projects_router,
     scripts_router,
 )
+
+# Auth configuration
+REQUIRE_AUTH = os.environ.get("MOVIECON_REQUIRE_AUTH", "false").lower() in (
+    "true",
+    "1",
+    "yes",
+)
+DEV_MODE = os.environ.get("MOVIECON_DEV_MODE", "true").lower() in ("true", "1", "yes")
 
 # API metadata
 API_TITLE = "Movie Conceptualizer API"
@@ -36,6 +52,17 @@ AI-powered filmmaking platform that transforms screenplays into visual pre-produ
 6. Export your materials
 
 Or use the `/generate` endpoint to run the full pipeline at once.
+
+## Rate Limiting
+
+This API implements rate limiting to ensure fair usage:
+- Standard endpoints: 100 requests per minute
+- AI generation endpoints: 10 requests per minute
+
+Rate limit headers are included in all responses:
+- X-RateLimit-Limit: Maximum requests allowed
+- X-RateLimit-Remaining: Requests remaining in current window
+- X-RateLimit-Reset: Time when the window resets
 """
 API_VERSION = "0.1.0"
 
@@ -56,6 +83,10 @@ app = FastAPI(
     },
 )
 
+# Configure rate limiting
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+
 # Configure CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -67,6 +98,7 @@ app.add_middleware(
 
 
 # Include routers
+app.include_router(auth_router, prefix="/api/v1")
 app.include_router(projects_router, prefix="/api/v1")
 app.include_router(scripts_router, prefix="/api/v1")
 app.include_router(generation_router, prefix="/api/v1")
@@ -94,7 +126,7 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
     summary="API Information",
     description="Get basic information about the API.",
 )
-async def root() -> dict:
+async def root(request: Request) -> dict:
     """Root endpoint with API information."""
     return {
         "name": API_TITLE,
@@ -106,8 +138,13 @@ async def root() -> dict:
             "openapi": "/openapi.json",
         },
         "endpoints": {
+            "auth": "/api/v1/auth",
             "projects": "/api/v1/projects",
             "health": "/health",
+        },
+        "auth": {
+            "required": REQUIRE_AUTH,
+            "dev_mode": DEV_MODE,
         },
     }
 
@@ -118,6 +155,7 @@ async def root() -> dict:
     summary="Health Check",
     description="Check if the API is running and healthy.",
 )
+@limiter.exempt
 async def health_check() -> dict:
     """Health check endpoint."""
     return {
@@ -133,12 +171,24 @@ async def health_check() -> dict:
     summary="API v1 Information",
     description="Get information about API version 1.",
 )
-async def api_v1_info() -> dict:
+@limiter.limit(DEFAULT_RATE_LIMIT)
+async def api_v1_info(request: Request) -> dict:
     """API v1 information endpoint."""
     return {
         "version": "1",
         "status": "active",
+        "auth": {
+            "required": REQUIRE_AUTH,
+            "dev_mode": DEV_MODE,
+        },
         "endpoints": {
+            "auth": {
+                "token": "POST /api/v1/auth/token",
+                "login": "POST /api/v1/auth/login",
+                "register": "POST /api/v1/auth/register",
+                "me": "GET /api/v1/auth/me",
+                "status": "GET /api/v1/auth/status",
+            },
             "projects": {
                 "list": "GET /api/v1/projects",
                 "create": "POST /api/v1/projects",

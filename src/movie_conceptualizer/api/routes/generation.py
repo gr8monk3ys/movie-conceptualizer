@@ -2,13 +2,18 @@
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from movie_conceptualizer.api.dependencies import (
     MockWorkflow,
     ProjectStore,
     get_project_store,
     get_workflow,
+)
+from movie_conceptualizer.api.ratelimit import (
+    DEFAULT_RATE_LIMIT,
+    GENERATION_RATE_LIMIT,
+    limiter,
 )
 from movie_conceptualizer.api.schemas import (
     AnalysisRequest,
@@ -40,18 +45,21 @@ def _filter_scenes_by_numbers(scenes: list, scene_numbers: list[int] | None) -> 
         200: {"description": "Analysis completed successfully"},
         404: {"model": ErrorResponse, "description": "Project not found"},
         400: {"model": ErrorResponse, "description": "Script not parsed"},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
     },
     summary="Run script analysis",
     description="Analyze the script for mood, themes, visual style, and other cinematic elements.",
 )
+@limiter.limit(GENERATION_RATE_LIMIT)
 async def analyze_script(
+    request: Request,
     project_id: str,
-    request: AnalysisRequest | None = None,
+    body: AnalysisRequest | None = None,
     store: ProjectStore = Depends(get_project_store),
     workflow: MockWorkflow = Depends(get_workflow),
 ) -> AnalysisResponse:
     """Run script analysis."""
-    project = store.get(project_id)
+    project = await store.get(project_id)
 
     if project is None:
         raise HTTPException(
@@ -66,7 +74,7 @@ async def analyze_script(
         )
 
     # Filter scenes if specific ones requested
-    scene_numbers = request.scene_numbers if request else None
+    scene_numbers = body.scene_numbers if body else None
     scenes_to_analyze = _filter_scenes_by_numbers(project.scenes, scene_numbers)
 
     if not scenes_to_analyze:
@@ -79,6 +87,7 @@ async def analyze_script(
     project.status = ProjectStatus.ANALYZING
     project.current_step = "Analyzing scenes"
     project.update()
+    await store.update_project(project)
 
     # Run analysis
     analyses, overall_tone, visual_motifs = await workflow.analyze_scenes(
@@ -93,6 +102,10 @@ async def analyze_script(
     project.current_step = None
     project.steps_completed.append("analysis")
     project.update()
+
+    # Save to database
+    await store.save_analyses(project_id, analyses, overall_tone, visual_motifs)
+    await store.update_project(project)
 
     return AnalysisResponse(
         project_id=project.id,
@@ -109,18 +122,21 @@ async def analyze_script(
         200: {"description": "Shot list generated successfully"},
         404: {"model": ErrorResponse, "description": "Project not found"},
         400: {"model": ErrorResponse, "description": "Script not parsed"},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
     },
     summary="Generate shot list",
     description="Generate a detailed shot list based on the parsed script and analysis.",
 )
+@limiter.limit(GENERATION_RATE_LIMIT)
 async def generate_shots(
+    request: Request,
     project_id: str,
-    request: GenerateShotsRequest | None = None,
+    body: GenerateShotsRequest | None = None,
     store: ProjectStore = Depends(get_project_store),
     workflow: MockWorkflow = Depends(get_workflow),
 ) -> ShotListResponse:
     """Generate shot list for the project."""
-    project = store.get(project_id)
+    project = await store.get(project_id)
 
     if project is None:
         raise HTTPException(
@@ -135,9 +151,9 @@ async def generate_shots(
         )
 
     # Get request parameters
-    scene_numbers = request.scene_numbers if request else None
-    style = request.style if request else project.style_notes
-    shots_per_scene = request.shots_per_scene if request else None
+    scene_numbers = body.scene_numbers if body else None
+    style = body.style if body else project.style_notes
+    shots_per_scene = body.shots_per_scene if body else None
 
     # Filter scenes if specific ones requested
     scenes_to_process = _filter_scenes_by_numbers(project.scenes, scene_numbers)
@@ -152,6 +168,7 @@ async def generate_shots(
     project.status = ProjectStatus.GENERATING_SHOTS
     project.current_step = "Generating shot list"
     project.update()
+    await store.update_project(project)
 
     # Generate shots
     shots = await workflow.generate_shots(
@@ -167,6 +184,10 @@ async def generate_shots(
     project.current_step = None
     project.steps_completed.append("shot_generation")
     project.update()
+
+    # Save to database
+    await store.save_shots(project_id, shots, style)
+    await store.update_project(project)
 
     # Calculate estimated duration
     total_duration = sum(s.duration_seconds or 0 for s in shots)
@@ -186,18 +207,21 @@ async def generate_shots(
         200: {"description": "Storyboard prompts generated successfully"},
         404: {"model": ErrorResponse, "description": "Project not found"},
         400: {"model": ErrorResponse, "description": "Shot list not generated"},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
     },
     summary="Generate storyboard prompts",
     description="Generate AI image prompts for storyboard frames based on the shot list.",
 )
+@limiter.limit(GENERATION_RATE_LIMIT)
 async def generate_storyboard(
+    request: Request,
     project_id: str,
-    request: GenerateStoryboardRequest | None = None,
+    body: GenerateStoryboardRequest | None = None,
     store: ProjectStore = Depends(get_project_store),
     workflow: MockWorkflow = Depends(get_workflow),
 ) -> StoryboardResponse:
     """Generate storyboard prompts for the project."""
-    project = store.get(project_id)
+    project = await store.get(project_id)
 
     if project is None:
         raise HTTPException(
@@ -212,9 +236,9 @@ async def generate_storyboard(
         )
 
     # Get request parameters
-    scene_numbers = request.scene_numbers if request else None
-    style = request.style if request else project.style_notes
-    aspect_ratio = request.aspect_ratio if request else "16:9"
+    scene_numbers = body.scene_numbers if body else None
+    style = body.style if body else project.style_notes
+    aspect_ratio = body.aspect_ratio if body else "16:9"
 
     # Filter shots if specific scenes requested
     shots_to_process = project.shots
@@ -231,6 +255,7 @@ async def generate_storyboard(
     project.status = ProjectStatus.GENERATING_STORYBOARD
     project.current_step = "Generating storyboard prompts"
     project.update()
+    await store.update_project(project)
 
     # Generate storyboard prompts
     prompts = await workflow.generate_storyboard_prompts(
@@ -247,6 +272,10 @@ async def generate_storyboard(
     project.processing_completed_at = datetime.utcnow()
     project.update()
 
+    # Save to database
+    await store.save_storyboard(project_id, prompts, style, aspect_ratio)
+    await store.update_project(project)
+
     return StoryboardResponse(
         project_id=project.id,
         prompts=project.storyboard_prompts,
@@ -261,18 +290,21 @@ async def generate_storyboard(
         200: {"description": "Pipeline completed successfully"},
         404: {"model": ErrorResponse, "description": "Project not found"},
         400: {"model": ErrorResponse, "description": "Script not uploaded"},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
     },
     summary="Run full pipeline",
-    description="Run the complete generation pipeline: analysis, shot list, and storyboard prompts.",
+    description="Run the complete generation pipeline: analysis, shot list, and storyboard.",
 )
+@limiter.limit(GENERATION_RATE_LIMIT)
 async def run_full_pipeline(
+    request: Request,
     project_id: str,
-    request: RunPipelineRequest | None = None,
+    body: RunPipelineRequest | None = None,
     store: ProjectStore = Depends(get_project_store),
     workflow: MockWorkflow = Depends(get_workflow),
 ) -> GenerationStatusResponse:
     """Run the full generation pipeline."""
-    project = store.get(project_id)
+    project = await store.get(project_id)
 
     if project is None:
         raise HTTPException(
@@ -287,11 +319,11 @@ async def run_full_pipeline(
         )
 
     # Get request parameters
-    scene_numbers = request.scene_numbers if request else None
-    style = request.style if request else project.style_notes
-    skip_analysis = request.skip_analysis if request else False
-    skip_shots = request.skip_shots if request else False
-    skip_storyboard = request.skip_storyboard if request else False
+    scene_numbers = body.scene_numbers if body else None
+    style = body.style if body else project.style_notes
+    skip_analysis = body.skip_analysis if body else False
+    skip_shots = body.skip_shots if body else False
+    skip_storyboard = body.skip_storyboard if body else False
 
     # Filter scenes
     scenes_to_process = _filter_scenes_by_numbers(project.scenes, scene_numbers)
@@ -315,6 +347,7 @@ async def run_full_pipeline(
             project.current_step = "Analyzing scenes"
             project.progress = 10.0
             project.update()
+            await store.update_project(project)
 
             analyses, overall_tone, visual_motifs = await workflow.analyze_scenes(
                 scenes_to_process, project.genre
@@ -325,12 +358,16 @@ async def run_full_pipeline(
             project.steps_completed.append("analysis")
             project.progress = 33.0
 
+            # Save analyses to database
+            await store.save_analyses(project_id, analyses, overall_tone, visual_motifs)
+
         # Step 2: Shot Generation
         if not skip_shots:
             project.status = ProjectStatus.GENERATING_SHOTS
             project.current_step = "Generating shot list"
             project.progress = 40.0
             project.update()
+            await store.update_project(project)
 
             shots = await workflow.generate_shots(
                 scenes_to_process,
@@ -341,12 +378,16 @@ async def run_full_pipeline(
             project.steps_completed.append("shot_generation")
             project.progress = 66.0
 
+            # Save shots to database
+            await store.save_shots(project_id, shots, style)
+
         # Step 3: Storyboard Prompts
         if not skip_storyboard and project.shots:
             project.status = ProjectStatus.GENERATING_STORYBOARD
             project.current_step = "Generating storyboard prompts"
             project.progress = 75.0
             project.update()
+            await store.update_project(project)
 
             # Filter shots for specified scenes
             shots_to_process = project.shots
@@ -360,18 +401,23 @@ async def run_full_pipeline(
             project.storyboard_prompts = prompts
             project.steps_completed.append("storyboard_generation")
 
+            # Save storyboard to database
+            await store.save_storyboard(project_id, prompts, style)
+
         # Complete
         project.status = ProjectStatus.COMPLETED
         project.current_step = None
         project.progress = 100.0
         project.processing_completed_at = datetime.utcnow()
         project.update()
+        await store.update_project(project)
 
     except Exception as e:
         project.status = ProjectStatus.ERROR
         project.error_message = str(e)
         project.current_step = None
         project.update()
+        await store.update_project(project)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Pipeline failed: {str(e)}",
@@ -395,16 +441,19 @@ async def run_full_pipeline(
     responses={
         200: {"description": "Generation status"},
         404: {"model": ErrorResponse, "description": "Project not found"},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
     },
     summary="Get generation status",
     description="Get the current status of the generation pipeline for a project.",
 )
+@limiter.limit(DEFAULT_RATE_LIMIT)
 async def get_generation_status(
+    request: Request,
     project_id: str,
     store: ProjectStore = Depends(get_project_store),
 ) -> GenerationStatusResponse:
     """Get the generation status for a project."""
-    project = store.get(project_id)
+    project = await store.get(project_id)
 
     if project is None:
         raise HTTPException(

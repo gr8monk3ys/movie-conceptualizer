@@ -2,9 +2,10 @@
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from movie_conceptualizer.api.dependencies import ProjectStore, get_project_store
+from movie_conceptualizer.api.ratelimit import DEFAULT_RATE_LIMIT, limiter
 from movie_conceptualizer.api.schemas import (
     ErrorResponse,
     ExportFormat,
@@ -20,11 +21,14 @@ router = APIRouter(prefix="/projects/{project_id}/export", tags=["export"])
     responses={
         200: {"description": "Shot list exported successfully"},
         404: {"model": ErrorResponse, "description": "Project or shot list not found"},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
     },
     summary="Export shot list",
     description="Export the shot list in JSON or PDF format.",
 )
+@limiter.limit(DEFAULT_RATE_LIMIT)
 async def export_shot_list(
+    request: Request,
     project_id: str,
     format: ExportFormat = Query(ExportFormat.JSON, description="Export format"),
     include_notes: bool = Query(True, description="Include director notes"),
@@ -32,7 +36,7 @@ async def export_shot_list(
     store: ProjectStore = Depends(get_project_store),
 ) -> ExportResponse:
     """Export the shot list for a project."""
-    project = store.get(project_id)
+    project = await store.get(project_id)
 
     if project is None:
         raise HTTPException(
@@ -124,18 +128,21 @@ async def export_shot_list(
     responses={
         200: {"description": "Storyboard data exported successfully"},
         404: {"model": ErrorResponse, "description": "Project or storyboard not found"},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
     },
     summary="Export storyboard data",
     description="Export the storyboard prompts and data in JSON or PDF format.",
 )
+@limiter.limit(DEFAULT_RATE_LIMIT)
 async def export_storyboard(
+    request: Request,
     project_id: str,
     format: ExportFormat = Query(ExportFormat.JSON, description="Export format"),
     include_prompts: bool = Query(True, description="Include generation prompts"),
     store: ProjectStore = Depends(get_project_store),
 ) -> ExportResponse:
     """Export storyboard data for a project."""
-    project = store.get(project_id)
+    project = await store.get(project_id)
 
     if project is None:
         raise HTTPException(
@@ -221,17 +228,20 @@ async def export_storyboard(
     responses={
         200: {"description": "Analysis exported successfully"},
         404: {"model": ErrorResponse, "description": "Project or analysis not found"},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
     },
     summary="Export analysis data",
     description="Export the script analysis data in JSON format.",
 )
+@limiter.limit(DEFAULT_RATE_LIMIT)
 async def export_analysis(
+    request: Request,
     project_id: str,
     format: ExportFormat = Query(ExportFormat.JSON, description="Export format"),
     store: ProjectStore = Depends(get_project_store),
 ) -> ExportResponse:
     """Export analysis data for a project."""
-    project = store.get(project_id)
+    project = await store.get(project_id)
 
     if project is None:
         raise HTTPException(

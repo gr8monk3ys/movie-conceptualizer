@@ -1,6 +1,6 @@
 """Script handling API routes."""
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 
 from movie_conceptualizer.api.dependencies import (
     MockWorkflow,
@@ -8,6 +8,7 @@ from movie_conceptualizer.api.dependencies import (
     get_project_store,
     get_workflow,
 )
+from movie_conceptualizer.api.ratelimit import DEFAULT_RATE_LIMIT, limiter
 from movie_conceptualizer.api.schemas import (
     ErrorResponse,
     ParseScriptRequest,
@@ -27,18 +28,21 @@ router = APIRouter(prefix="/projects/{project_id}", tags=["scripts"])
         201: {"description": "Script uploaded successfully"},
         404: {"model": ErrorResponse, "description": "Project not found"},
         422: {"description": "Validation error"},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
     },
     summary="Upload script",
     description="Upload a screenplay script as text content.",
 )
+@limiter.limit(DEFAULT_RATE_LIMIT)
 async def upload_script(
+    request: Request,
     project_id: str,
-    request: UploadScriptRequest,
+    body: UploadScriptRequest,
     store: ProjectStore = Depends(get_project_store),
     workflow: MockWorkflow = Depends(get_workflow),
 ) -> ScriptResponse:
     """Upload a script to a project."""
-    project = store.get(project_id)
+    project = await store.get(project_id)
 
     if project is None:
         raise HTTPException(
@@ -47,20 +51,29 @@ async def upload_script(
         )
 
     # Store the script content
-    project.script_content = request.content
-    project.script_format = request.format
+    project.script_content = body.content
+    project.script_format = body.format
     project.status = ProjectStatus.SCRIPT_UPLOADED
     project.update()
 
+    # Save script to database
+    await store.save_script(project_id, body.content, body.format)
+    await store.update_project(project)
+
     # Automatically parse the script
     project.status = ProjectStatus.PARSING
-    scenes, title, author = await workflow.parse_script(request.content, request.format)
+    scenes, title, author = await workflow.parse_script(body.content, body.format)
 
     project.scenes = scenes
     project.script_title = title
     project.script_author = author
     project.status = ProjectStatus.PARSED
     project.update()
+
+    # Save parsed data to database
+    await store.save_scenes(project_id, scenes)
+    await store.update_script_info(project_id, title, author)
+    await store.update_project(project)
 
     return ScriptResponse(
         project_id=project.id,
@@ -81,18 +94,21 @@ async def upload_script(
         201: {"description": "Script file uploaded successfully"},
         404: {"model": ErrorResponse, "description": "Project not found"},
         400: {"model": ErrorResponse, "description": "Invalid file"},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
     },
     summary="Upload script file",
     description="Upload a screenplay script as a file (supports .txt, .fountain, .fdx).",
 )
+@limiter.limit(DEFAULT_RATE_LIMIT)
 async def upload_script_file(
+    request: Request,
     project_id: str,
     file: UploadFile = File(..., description="Script file to upload"),
     store: ProjectStore = Depends(get_project_store),
     workflow: MockWorkflow = Depends(get_workflow),
 ) -> ScriptResponse:
     """Upload a script file to a project."""
-    project = store.get(project_id)
+    project = await store.get(project_id)
 
     if project is None:
         raise HTTPException(
@@ -130,6 +146,10 @@ async def upload_script_file(
     project.status = ProjectStatus.SCRIPT_UPLOADED
     project.update()
 
+    # Save script to database
+    await store.save_script(project_id, script_content, script_format)
+    await store.update_project(project)
+
     # Automatically parse the script
     project.status = ProjectStatus.PARSING
     scenes, title, author = await workflow.parse_script(script_content, script_format)
@@ -139,6 +159,11 @@ async def upload_script_file(
     project.script_author = author
     project.status = ProjectStatus.PARSED
     project.update()
+
+    # Save parsed data to database
+    await store.save_scenes(project_id, scenes)
+    await store.update_script_info(project_id, title, author)
+    await store.update_project(project)
 
     return ScriptResponse(
         project_id=project.id,
@@ -157,16 +182,19 @@ async def upload_script_file(
     responses={
         200: {"description": "Script data"},
         404: {"model": ErrorResponse, "description": "Project or script not found"},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
     },
     summary="Get parsed script",
     description="Retrieve the parsed script data including scenes.",
 )
+@limiter.limit(DEFAULT_RATE_LIMIT)
 async def get_script(
+    request: Request,
     project_id: str,
     store: ProjectStore = Depends(get_project_store),
 ) -> ScriptResponse:
     """Get the parsed script for a project."""
-    project = store.get(project_id)
+    project = await store.get(project_id)
 
     if project is None:
         raise HTTPException(
@@ -197,18 +225,21 @@ async def get_script(
     responses={
         200: {"description": "Script parsed successfully"},
         404: {"model": ErrorResponse, "description": "Project or script not found"},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
     },
     summary="Trigger script parsing",
     description="Re-parse the uploaded script. Useful after modifications.",
 )
+@limiter.limit(DEFAULT_RATE_LIMIT)
 async def parse_script(
+    request: Request,
     project_id: str,
-    request: ParseScriptRequest | None = None,
+    body: ParseScriptRequest | None = None,
     store: ProjectStore = Depends(get_project_store),
     workflow: MockWorkflow = Depends(get_workflow),
 ) -> ScriptResponse:
     """Trigger script parsing."""
-    project = store.get(project_id)
+    project = await store.get(project_id)
 
     if project is None:
         raise HTTPException(
@@ -223,7 +254,7 @@ async def parse_script(
         )
 
     # Check if already parsed and force_reparse is False
-    force_reparse = request.force_reparse if request else False
+    force_reparse = body.force_reparse if body else False
     if project.scenes and not force_reparse:
         return ScriptResponse(
             project_id=project.id,
@@ -247,6 +278,11 @@ async def parse_script(
     project.script_author = author
     project.status = ProjectStatus.PARSED
     project.update()
+
+    # Save parsed data to database
+    await store.save_scenes(project_id, scenes)
+    await store.update_script_info(project_id, title, author)
+    await store.update_project(project)
 
     return ScriptResponse(
         project_id=project.id,
