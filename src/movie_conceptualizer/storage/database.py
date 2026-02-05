@@ -55,7 +55,7 @@ DEFAULT_DB_DIR = Path.home() / ".movie-conceptualizer"
 DEFAULT_DB_PATH = DEFAULT_DB_DIR / "data.db"
 
 # Current schema version
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 9
 
 
 class DatabaseBackend(StrEnum):
@@ -191,6 +191,40 @@ CREATE TABLE IF NOT EXISTS projects (
 );
 """
 
+SQLITE_CREATE_USERS_TABLE = """
+CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    username TEXT NOT NULL UNIQUE,
+    hashed_password TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'user',
+    is_active BOOLEAN NOT NULL DEFAULT 1,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+SQLITE_CREATE_IDEMPOTENCY_TABLE = """
+CREATE TABLE IF NOT EXISTS job_idempotency (
+    id TEXT PRIMARY KEY,
+    idempotency_key TEXT NOT NULL,
+    user_id TEXT,
+    endpoint TEXT NOT NULL,
+    job_id TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+SQLITE_CREATE_REFRESH_TOKENS_TABLE = """
+CREATE TABLE IF NOT EXISTS refresh_tokens (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    revoked_at TIMESTAMP,
+    expires_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
 SQLITE_CREATE_SCRIPTS_TABLE = """
 CREATE TABLE IF NOT EXISTS scripts (
     id TEXT PRIMARY KEY,
@@ -323,6 +357,8 @@ CREATE TABLE IF NOT EXISTS job_audit_logs (
     action TEXT NOT NULL,
     target_job_id TEXT,
     metadata TEXT,
+    prev_hash TEXT,
+    hash TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 """
@@ -335,6 +371,21 @@ CREATE INDEX IF NOT EXISTS idx_shot_lists_project_id ON shot_lists(project_id);
 CREATE INDEX IF NOT EXISTS idx_storyboards_project_id ON storyboards(project_id);
 CREATE INDEX IF NOT EXISTS idx_analyses_project_id ON analyses(project_id);
 CREATE INDEX IF NOT EXISTS idx_project_analyses_project_id ON project_analyses(project_id);
+"""
+
+SQLITE_CREATE_USERS_INDEXES = """
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username);
+"""
+
+SQLITE_CREATE_IDEMPOTENCY_INDEXES = """
+CREATE UNIQUE INDEX IF NOT EXISTS idx_job_idempotency_key
+ON job_idempotency(user_id, endpoint, idempotency_key);
+CREATE INDEX IF NOT EXISTS idx_job_idempotency_job_id ON job_idempotency(job_id);
+"""
+
+SQLITE_CREATE_REFRESH_TOKENS_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id);
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_expires_at ON refresh_tokens(expires_at);
 """
 
 SQLITE_CREATE_PROJECT_INDEXES = """
@@ -361,6 +412,9 @@ CREATE INDEX IF NOT EXISTS idx_job_audit_target_job_id ON job_audit_logs(target_
 SQLITE_MIGRATIONS: dict[int, list[str]] = {
     1: [
         SQLITE_CREATE_SCHEMA_VERSION_TABLE,
+        SQLITE_CREATE_USERS_TABLE,
+        SQLITE_CREATE_IDEMPOTENCY_TABLE,
+        SQLITE_CREATE_REFRESH_TOKENS_TABLE,
         SQLITE_CREATE_PROJECTS_TABLE,
         SQLITE_CREATE_SCRIPTS_TABLE,
         SQLITE_CREATE_SCENES_TABLE,
@@ -369,6 +423,9 @@ SQLITE_MIGRATIONS: dict[int, list[str]] = {
         SQLITE_CREATE_ANALYSES_TABLE,
         SQLITE_CREATE_PROJECT_ANALYSIS_TABLE,
         SQLITE_CREATE_INDEXES,
+        SQLITE_CREATE_USERS_INDEXES,
+        SQLITE_CREATE_IDEMPOTENCY_INDEXES,
+        SQLITE_CREATE_REFRESH_TOKENS_INDEXES,
     ],
     2: [
         SQLITE_CREATE_JOBS_TABLE,
@@ -394,6 +451,23 @@ SQLITE_MIGRATIONS: dict[int, list[str]] = {
     5: [
         "ALTER TABLE projects ADD COLUMN user_id TEXT",
         SQLITE_CREATE_PROJECT_INDEXES,
+    ],
+    6: [
+        SQLITE_CREATE_USERS_TABLE,
+        SQLITE_CREATE_USERS_INDEXES,
+    ],
+    7: [
+        SQLITE_CREATE_IDEMPOTENCY_TABLE,
+        SQLITE_CREATE_IDEMPOTENCY_INDEXES,
+    ],
+    8: [
+        "ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'",
+        "ALTER TABLE job_audit_logs ADD COLUMN prev_hash TEXT",
+        "ALTER TABLE job_audit_logs ADD COLUMN hash TEXT",
+    ],
+    9: [
+        SQLITE_CREATE_REFRESH_TOKENS_TABLE,
+        SQLITE_CREATE_REFRESH_TOKENS_INDEXES,
     ],
 }
 
@@ -425,6 +499,40 @@ CREATE TABLE IF NOT EXISTS projects (
     error_message TEXT,
     processing_started_at TIMESTAMP WITH TIME ZONE,
     processing_completed_at TIMESTAMP WITH TIME ZONE
+);
+"""
+
+POSTGRESQL_CREATE_USERS_TABLE = """
+CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    username TEXT NOT NULL UNIQUE,
+    hashed_password TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'user',
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+POSTGRESQL_CREATE_IDEMPOTENCY_TABLE = """
+CREATE TABLE IF NOT EXISTS job_idempotency (
+    id TEXT PRIMARY KEY,
+    idempotency_key TEXT NOT NULL,
+    user_id TEXT,
+    endpoint TEXT NOT NULL,
+    job_id TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+POSTGRESQL_CREATE_REFRESH_TOKENS_TABLE = """
+CREATE TABLE IF NOT EXISTS refresh_tokens (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    revoked_at TIMESTAMP WITH TIME ZONE,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 """
 
@@ -554,6 +662,8 @@ CREATE TABLE IF NOT EXISTS job_audit_logs (
     action TEXT NOT NULL,
     target_job_id TEXT,
     metadata TEXT,
+    prev_hash TEXT,
+    hash TEXT,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 """
@@ -566,6 +676,21 @@ CREATE INDEX IF NOT EXISTS idx_shot_lists_project_id ON shot_lists(project_id);
 CREATE INDEX IF NOT EXISTS idx_storyboards_project_id ON storyboards(project_id);
 CREATE INDEX IF NOT EXISTS idx_analyses_project_id ON analyses(project_id);
 CREATE INDEX IF NOT EXISTS idx_project_analyses_project_id ON project_analyses(project_id);
+"""
+
+POSTGRESQL_CREATE_USERS_INDEXES = """
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username);
+"""
+
+POSTGRESQL_CREATE_IDEMPOTENCY_INDEXES = """
+CREATE UNIQUE INDEX IF NOT EXISTS idx_job_idempotency_key
+ON job_idempotency(user_id, endpoint, idempotency_key);
+CREATE INDEX IF NOT EXISTS idx_job_idempotency_job_id ON job_idempotency(job_id);
+"""
+
+POSTGRESQL_CREATE_REFRESH_TOKENS_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id);
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_expires_at ON refresh_tokens(expires_at);
 """
 
 POSTGRESQL_CREATE_PROJECT_INDEXES = """
@@ -592,6 +717,9 @@ CREATE INDEX IF NOT EXISTS idx_job_audit_target_job_id ON job_audit_logs(target_
 POSTGRESQL_MIGRATIONS: dict[int, list[str]] = {
     1: [
         POSTGRESQL_CREATE_SCHEMA_VERSION_TABLE,
+        POSTGRESQL_CREATE_USERS_TABLE,
+        POSTGRESQL_CREATE_IDEMPOTENCY_TABLE,
+        POSTGRESQL_CREATE_REFRESH_TOKENS_TABLE,
         POSTGRESQL_CREATE_PROJECTS_TABLE,
         POSTGRESQL_CREATE_SCRIPTS_TABLE,
         POSTGRESQL_CREATE_SCENES_TABLE,
@@ -600,6 +728,9 @@ POSTGRESQL_MIGRATIONS: dict[int, list[str]] = {
         POSTGRESQL_CREATE_ANALYSES_TABLE,
         POSTGRESQL_CREATE_PROJECT_ANALYSIS_TABLE,
         POSTGRESQL_CREATE_INDEXES,
+        POSTGRESQL_CREATE_USERS_INDEXES,
+        POSTGRESQL_CREATE_IDEMPOTENCY_INDEXES,
+        POSTGRESQL_CREATE_REFRESH_TOKENS_INDEXES,
     ],
     2: [
         POSTGRESQL_CREATE_JOBS_TABLE,
@@ -625,6 +756,23 @@ POSTGRESQL_MIGRATIONS: dict[int, list[str]] = {
     5: [
         "ALTER TABLE projects ADD COLUMN IF NOT EXISTS user_id TEXT",
         POSTGRESQL_CREATE_PROJECT_INDEXES,
+    ],
+    6: [
+        POSTGRESQL_CREATE_USERS_TABLE,
+        POSTGRESQL_CREATE_USERS_INDEXES,
+    ],
+    7: [
+        POSTGRESQL_CREATE_IDEMPOTENCY_TABLE,
+        POSTGRESQL_CREATE_IDEMPOTENCY_INDEXES,
+    ],
+    8: [
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'user'",
+        "ALTER TABLE job_audit_logs ADD COLUMN IF NOT EXISTS prev_hash TEXT",
+        "ALTER TABLE job_audit_logs ADD COLUMN IF NOT EXISTS hash TEXT",
+    ],
+    9: [
+        POSTGRESQL_CREATE_REFRESH_TOKENS_TABLE,
+        POSTGRESQL_CREATE_REFRESH_TOKENS_INDEXES,
     ],
 }
 
@@ -681,6 +829,11 @@ class BaseDatabase(ABC):
     @abstractmethod
     async def reset(self) -> None:
         """Reset the database (delete all data)."""
+        ...
+
+    @abstractmethod
+    async def get_schema_version(self) -> int:
+        """Get the current schema version."""
         ...
 
     def format_query(self, query: str, param_count: int = 0) -> str:
@@ -816,6 +969,16 @@ class SQLiteDatabase(BaseDatabase):
             return row[0] if row and row[0] is not None else 0
         except Exception:
             return 0
+
+    async def get_schema_version(self) -> int:
+        """Get current schema version."""
+        if not self._initialized:
+            await self.initialize()
+        async with aiosqlite.connect(
+            self._db_path,
+            detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
+        ) as conn:
+            return await self._get_schema_version(conn)
 
     async def _run_migration(self, conn: SQLiteConnection, version: int) -> None:
         """Run a specific migration version.
@@ -1042,6 +1205,13 @@ class PostgreSQLDatabase(BaseDatabase):
             return version if version is not None else 0
         except Exception:
             return 0
+
+    async def get_schema_version(self) -> int:
+        """Get current schema version."""
+        if not self._initialized:
+            await self.initialize()
+        async with self.connection() as conn:
+            return await self._get_schema_version(conn)
 
     async def _run_migration(self, conn: Any, version: int) -> None:
         """Run a specific migration version.

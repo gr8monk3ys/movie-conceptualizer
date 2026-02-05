@@ -24,7 +24,7 @@ from movie_conceptualizer.api.auth import (
     get_user_store,
     is_admin_user,
     require_auth_if_enabled,
-    require_admin_if_enabled,
+    require_admin_access,
 )
 from movie_conceptualizer.api.schemas import (
     CameraMovement,
@@ -93,7 +93,7 @@ __all__ = [
     "get_optional_current_user",
     "get_user_store",
     "require_auth_if_enabled",
-    "require_admin_if_enabled",
+    "require_admin_access",
     "is_admin_user",
 ]
 

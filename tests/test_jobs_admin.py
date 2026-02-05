@@ -12,8 +12,11 @@ def client(monkeypatch, tmp_path):
     monkeypatch.setenv("MOVIECON_DB_PATH", str(tmp_path / "test.db"))
     monkeypatch.setenv("MOVIECON_REQUIRE_AUTH", "true")
     monkeypatch.setenv("MOVIECON_DEV_MODE", "true")
+    monkeypatch.setenv("MOVIECON_ALLOW_DEV_FALLBACK", "true")
     monkeypatch.setenv("MOVIECON_ALLOW_REGISTRATION", "true")
+    monkeypatch.setenv("MOVIECON_ADMIN_POLICY", "env")
     monkeypatch.setenv("MOVIECON_ADMIN_USERS", "dev")
+    monkeypatch.setenv("MOVIECON_ADMIN_MFA_SECRET", "")
     monkeypatch.setenv("MOVIECON_WORKFLOW_BACKEND", "mock")
     monkeypatch.setenv("MOVIECON_JOB_BACKEND", "inprocess")
     monkeypatch.setenv("MOVIECON_INPROCESS_INLINE", "true")
@@ -130,12 +133,20 @@ def test_jobs_access_and_audit_logs(client):
     )
     assert response.status_code == 201
 
+    idempotency_headers = {**user_headers, "Idempotency-Key": "user-job-1"}
     response = client.post(
         f"/api/v1/projects/{project_id}/analyze?async_run=true",
-        headers=user_headers,
+        headers=idempotency_headers,
     )
     assert response.status_code == 202
     user_job_id = response.json()["job_id"]
+
+    response = client.post(
+        f"/api/v1/projects/{project_id}/analyze?async_run=true",
+        headers=idempotency_headers,
+    )
+    assert response.status_code == 202
+    assert response.json()["job_id"] == user_job_id
 
     # User can list their jobs and see their job id
     response = client.get("/api/v1/jobs", headers=user_headers)
@@ -207,3 +218,34 @@ def test_jobs_access_and_audit_logs(client):
 
     response = client.get("/api/v1/jobs/audit?format=xml", headers=admin_headers)
     assert response.status_code == 400
+
+
+def test_refresh_token_flow(client):
+    response = client.post(
+        "/api/v1/auth/token",
+        data={"username": "dev", "password": "dev123"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    refresh_token = payload.get("refresh_token")
+    assert refresh_token
+
+    response = client.post(
+        "/api/v1/auth/refresh",
+        json={"refresh_token": refresh_token},
+    )
+    assert response.status_code == 200
+    refreshed = response.json()
+    assert refreshed.get("access_token")
+
+    response = client.post(
+        "/api/v1/auth/logout",
+        json={"refresh_token": refresh_token},
+    )
+    assert response.status_code == 200
+
+    response = client.post(
+        "/api/v1/auth/refresh",
+        json={"refresh_token": refresh_token},
+    )
+    assert response.status_code == 401

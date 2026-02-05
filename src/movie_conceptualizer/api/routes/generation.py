@@ -4,7 +4,7 @@ import os
 from uuid import uuid4
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 
 from movie_conceptualizer.api.dependencies import (
     ProjectStore,
@@ -54,9 +54,17 @@ from movie_conceptualizer.api.schemas import (
     ShotListResponse,
     StoryboardResponse,
 )
-from movie_conceptualizer.storage import JobRepository
+from movie_conceptualizer.storage import JobIdempotencyRepository, JobRepository
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["generation"])
+
+IDEMPOTENCY_TTL_DAYS = int(os.environ.get("MOVIECON_IDEMPOTENCY_TTL_DAYS", "7"))
+
+
+def _idempotency_max_age_seconds() -> int | None:
+    if IDEMPOTENCY_TTL_DAYS <= 0:
+        return None
+    return IDEMPOTENCY_TTL_DAYS * 24 * 60 * 60
 
 
 def _filter_scenes_by_numbers(scenes: list, scene_numbers: list[int] | None) -> list:
@@ -88,6 +96,7 @@ async def analyze_script(
     async_run: bool = Query(
         False, description="Run analysis in background and return a job ID"
     ),
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
     store: ProjectStore = Depends(get_project_store),
     workflow: Workflow = Depends(get_workflow),
     current_user: Annotated[UserInDB | None, Depends(require_auth_if_enabled)] = None,
@@ -125,6 +134,24 @@ async def analyze_script(
         )
 
     if async_run:
+        if idempotency_key:
+            idempotency_repo = JobIdempotencyRepository()
+            existing_job_id = await idempotency_repo.get_job_id(
+                idempotency_key=idempotency_key,
+                endpoint="analysis",
+                user_id=current_user.id if current_user else None,
+                max_age_seconds=_idempotency_max_age_seconds(),
+            )
+            if existing_job_id:
+                repo = JobRepository()
+                existing_job = await repo.get(existing_job_id)
+                response.status_code = status.HTTP_202_ACCEPTED
+                return GenerationJobResponse(
+                    job_id=existing_job_id,
+                    status=JobStatus(existing_job.status) if existing_job else JobStatus.QUEUED,
+                    project_id=project.id,
+                    message="Analysis already queued",
+                )
         backend = os.environ.get("MOVIECON_JOB_BACKEND", "inprocess").lower()
         payload = encode_payload(AnalysisJobPayload(scene_numbers=scene_numbers))
         if backend == "arq":
@@ -139,6 +166,13 @@ async def analyze_script(
                 payload=payload,
             )
             await enqueue_analysis_job(job_id, project.id, scene_numbers)
+            if idempotency_key:
+                await JobIdempotencyRepository().create(
+                    idempotency_key=idempotency_key,
+                    endpoint="analysis",
+                    job_id=job_id,
+                    user_id=current_user.id if current_user else None,
+                )
             response.status_code = status.HTTP_202_ACCEPTED
             return GenerationJobResponse(
                 job_id=job_id,
@@ -162,6 +196,13 @@ async def analyze_script(
             user_id=current_user.id if current_user else None,
             payload=payload,
         )
+        if idempotency_key:
+            await JobIdempotencyRepository().create(
+                idempotency_key=idempotency_key,
+                endpoint="analysis",
+                job_id=job.id,
+                user_id=current_user.id if current_user else None,
+            )
         response.status_code = status.HTTP_202_ACCEPTED
         return GenerationJobResponse(
             job_id=job.id,
@@ -208,6 +249,7 @@ async def generate_shots(
     async_run: bool = Query(
         False, description="Run shot generation in background and return a job ID"
     ),
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
     store: ProjectStore = Depends(get_project_store),
     workflow: Workflow = Depends(get_workflow),
     current_user: Annotated[UserInDB | None, Depends(require_auth_if_enabled)] = None,
@@ -249,6 +291,24 @@ async def generate_shots(
         )
 
     if async_run:
+        if idempotency_key:
+            idempotency_repo = JobIdempotencyRepository()
+            existing_job_id = await idempotency_repo.get_job_id(
+                idempotency_key=idempotency_key,
+                endpoint="shots",
+                user_id=current_user.id if current_user else None,
+                max_age_seconds=_idempotency_max_age_seconds(),
+            )
+            if existing_job_id:
+                repo = JobRepository()
+                existing_job = await repo.get(existing_job_id)
+                response.status_code = status.HTTP_202_ACCEPTED
+                return GenerationJobResponse(
+                    job_id=existing_job_id,
+                    status=JobStatus(existing_job.status) if existing_job else JobStatus.QUEUED,
+                    project_id=project.id,
+                    message="Shots already queued",
+                )
         backend = os.environ.get("MOVIECON_JOB_BACKEND", "inprocess").lower()
         payload = encode_payload(
             ShotsJobPayload(
@@ -275,6 +335,13 @@ async def generate_shots(
                 style=style,
                 shots_per_scene=shots_per_scene,
             )
+            if idempotency_key:
+                await JobIdempotencyRepository().create(
+                    idempotency_key=idempotency_key,
+                    endpoint="shots",
+                    job_id=job_id,
+                    user_id=current_user.id if current_user else None,
+                )
             response.status_code = status.HTTP_202_ACCEPTED
             return GenerationJobResponse(
                 job_id=job_id,
@@ -300,6 +367,13 @@ async def generate_shots(
             user_id=current_user.id if current_user else None,
             payload=payload,
         )
+        if idempotency_key:
+            await JobIdempotencyRepository().create(
+                idempotency_key=idempotency_key,
+                endpoint="shots",
+                job_id=job.id,
+                user_id=current_user.id if current_user else None,
+            )
         response.status_code = status.HTTP_202_ACCEPTED
         return GenerationJobResponse(
             job_id=job.id,
@@ -349,6 +423,7 @@ async def generate_storyboard(
     async_run: bool = Query(
         False, description="Run storyboard generation in background and return a job ID"
     ),
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
     store: ProjectStore = Depends(get_project_store),
     workflow: Workflow = Depends(get_workflow),
     current_user: Annotated[UserInDB | None, Depends(require_auth_if_enabled)] = None,
@@ -392,6 +467,24 @@ async def generate_storyboard(
         )
 
     if async_run:
+        if idempotency_key:
+            idempotency_repo = JobIdempotencyRepository()
+            existing_job_id = await idempotency_repo.get_job_id(
+                idempotency_key=idempotency_key,
+                endpoint="storyboard",
+                user_id=current_user.id if current_user else None,
+                max_age_seconds=_idempotency_max_age_seconds(),
+            )
+            if existing_job_id:
+                repo = JobRepository()
+                existing_job = await repo.get(existing_job_id)
+                response.status_code = status.HTTP_202_ACCEPTED
+                return GenerationJobResponse(
+                    job_id=existing_job_id,
+                    status=JobStatus(existing_job.status) if existing_job else JobStatus.QUEUED,
+                    project_id=project.id,
+                    message="Storyboard already queued",
+                )
         backend = os.environ.get("MOVIECON_JOB_BACKEND", "inprocess").lower()
         payload = encode_payload(
             StoryboardJobPayload(
@@ -418,6 +511,13 @@ async def generate_storyboard(
                 style=style,
                 aspect_ratio=aspect_ratio,
             )
+            if idempotency_key:
+                await JobIdempotencyRepository().create(
+                    idempotency_key=idempotency_key,
+                    endpoint="storyboard",
+                    job_id=job_id,
+                    user_id=current_user.id if current_user else None,
+                )
             response.status_code = status.HTTP_202_ACCEPTED
             return GenerationJobResponse(
                 job_id=job_id,
@@ -443,6 +543,13 @@ async def generate_storyboard(
             user_id=current_user.id if current_user else None,
             payload=payload,
         )
+        if idempotency_key:
+            await JobIdempotencyRepository().create(
+                idempotency_key=idempotency_key,
+                endpoint="storyboard",
+                job_id=job.id,
+                user_id=current_user.id if current_user else None,
+            )
         response.status_code = status.HTTP_202_ACCEPTED
         return GenerationJobResponse(
             job_id=job.id,
@@ -490,6 +597,7 @@ async def run_full_pipeline(
     async_run: bool = Query(
         False, description="Run pipeline in background and return a job ID"
     ),
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
     store: ProjectStore = Depends(get_project_store),
     workflow: Workflow = Depends(get_workflow),
     current_user: Annotated[UserInDB | None, Depends(require_auth_if_enabled)] = None,
@@ -545,6 +653,24 @@ async def run_full_pipeline(
         )
 
     if async_run:
+        if idempotency_key:
+            idempotency_repo = JobIdempotencyRepository()
+            existing_job_id = await idempotency_repo.get_job_id(
+                idempotency_key=idempotency_key,
+                endpoint="full_pipeline",
+                user_id=current_user.id if current_user else None,
+                max_age_seconds=_idempotency_max_age_seconds(),
+            )
+            if existing_job_id:
+                repo = JobRepository()
+                existing_job = await repo.get(existing_job_id)
+                response.status_code = status.HTTP_202_ACCEPTED
+                return GenerationJobResponse(
+                    job_id=existing_job_id,
+                    status=JobStatus(existing_job.status) if existing_job else JobStatus.QUEUED,
+                    project_id=project.id,
+                    message="Pipeline already queued",
+                )
         payload = encode_payload(
             PipelineJobPayload(
                 scene_numbers=scene_numbers,
@@ -575,6 +701,13 @@ async def run_full_pipeline(
                 skip_shots=skip_shots,
                 skip_storyboard=skip_storyboard,
             )
+            if idempotency_key:
+                await JobIdempotencyRepository().create(
+                    idempotency_key=idempotency_key,
+                    endpoint="full_pipeline",
+                    job_id=job_id,
+                    user_id=current_user.id if current_user else None,
+                )
             response.status_code = status.HTTP_202_ACCEPTED
             return GenerationJobResponse(
                 job_id=job_id,
@@ -602,6 +735,13 @@ async def run_full_pipeline(
             user_id=current_user.id if current_user else None,
             payload=payload,
         )
+        if idempotency_key:
+            await JobIdempotencyRepository().create(
+                idempotency_key=idempotency_key,
+                endpoint="full_pipeline",
+                job_id=job.id,
+                user_id=current_user.id if current_user else None,
+            )
         response.status_code = status.HTTP_202_ACCEPTED
         return GenerationJobResponse(
             job_id=job.id,

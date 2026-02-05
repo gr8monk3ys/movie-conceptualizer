@@ -67,12 +67,16 @@ from movie_conceptualizer.storage.repositories import (
     JobAuditLogRepository,
     JobRepository,
     ProjectRepository,
+    UserRepository,
+    JobIdempotencyRepository,
+    RefreshTokenRepository,
     ScriptRepository,
     GenerationRepository,
     # Models
     JobAuditLogModel,
     JobModel,
     ProjectModel,
+    UserModel,
     ScriptModel,
     # Data schemas
     SceneData,
@@ -115,12 +119,16 @@ __all__ = [
     "JobRepository",
     "JobAuditLogRepository",
     "ProjectRepository",
+    "UserRepository",
+    "JobIdempotencyRepository",
+    "RefreshTokenRepository",
     "ScriptRepository",
     "GenerationRepository",
     # Models
     "JobModel",
     "JobAuditLogModel",
     "ProjectModel",
+    "UserModel",
     "ScriptModel",
     # Data Schemas
     "SceneData",

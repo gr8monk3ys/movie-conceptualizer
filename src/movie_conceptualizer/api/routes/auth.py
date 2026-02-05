@@ -7,7 +7,7 @@ Provides endpoints for:
 - GET /api/v1/auth/status - Get authentication status
 """
 
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -15,22 +15,35 @@ from fastapi.security import OAuth2PasswordRequestForm
 
 from movie_conceptualizer.api.auth import (
     ALLOW_REGISTRATION,
+    ALLOW_DEV_FALLBACK,
+    DEV_MODE,
+    PASSWORD_POLICY_ENFORCE,
     REQUIRE_AUTH,
     TOKEN_EXPIRE_MINUTES,
+    REFRESH_TOKENS_ENABLED,
+    REFRESH_TOKEN_EXPIRE_DAYS,
+    REFRESH_ROTATE,
     AuthStatusResponse,
     LoginRequest,
+    RefreshTokenRequest,
     RegisterRequest,
+    SetUserRoleRequest,
     Token,
     UserInDB,
     UserResponse,
     UserStore,
+    _generate_refresh_token,
+    _hash_refresh_token,
     create_access_token,
     get_current_active_user,
     get_optional_current_user,
     get_user_store,
+    require_admin_access,
+    validate_password_policy,
 )
-from movie_conceptualizer.api.ratelimit import DEFAULT_RATE_LIMIT, GENERATION_RATE_LIMIT, limiter
+from movie_conceptualizer.api.ratelimit import AUTH_RATE_LIMIT, DEFAULT_RATE_LIMIT, GENERATION_RATE_LIMIT, limiter
 from movie_conceptualizer.api.schemas import ErrorResponse
+from movie_conceptualizer.storage import RefreshTokenRepository, UserRepository
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 
@@ -53,7 +66,7 @@ The token should be included in subsequent requests using the Authorization head
 Supports both JSON body and OAuth2 form data for compatibility.
 """,
 )
-@limiter.limit(GENERATION_RATE_LIMIT)
+@limiter.limit(AUTH_RATE_LIMIT)
 async def login_for_access_token(
     request: Request,
     response: Response,
@@ -68,18 +81,30 @@ async def login_for_access_token(
 
     Returns a JWT token valid for the configured expiration time.
     """
-    user = user_store.authenticate_user(form_data.username, form_data.password)
+    user = await user_store.authenticate_user(form_data.username, form_data.password)
 
-    if not user and REQUIRE_AUTH is False and form_data.username == "dev":
+    if (
+        not user
+        and REQUIRE_AUTH is False
+        and DEV_MODE
+        and ALLOW_DEV_FALLBACK
+        and form_data.username == "dev"
+    ):
         # Allow dev login without auth requirement
-        user = user_store.get_user_by_username("dev")
+        user = await user_store.get_user_by_username("dev")
 
-    if not user and form_data.username == "dev" and form_data.password == "dev123":
+    if (
+        not user
+        and DEV_MODE
+        and ALLOW_DEV_FALLBACK
+        and form_data.username == "dev"
+        and form_data.password == "dev123"
+    ):
         # Dev fallback in case bcrypt backend is unavailable
         try:
-            user = user_store.create_user("dev", "dev123")
+            user = await user_store.create_user("dev", "dev123", enforce_policy=False)
         except ValueError:
-            user = user_store.get_user_by_username("dev")
+            user = await user_store.get_user_by_username("dev")
 
     if not user:
         raise HTTPException(
@@ -101,8 +126,19 @@ async def login_for_access_token(
         expires_delta=access_token_expires,
     )
 
+    refresh_token = None
+    if REFRESH_TOKENS_ENABLED:
+        refresh_token = _generate_refresh_token()
+        repo = RefreshTokenRepository()
+        await repo.create(
+            user_id=user.id,
+            token_hash=_hash_refresh_token(refresh_token),
+            expires_at=datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
+        )
+
     return Token(
         access_token=access_token,
+        refresh_token=refresh_token,
         token_type="bearer",
         expires_in=TOKEN_EXPIRE_MINUTES * 60,
     )
@@ -123,7 +159,7 @@ Alternative login endpoint that accepts JSON body instead of form data.
 Useful for API clients that prefer JSON over form encoding.
 """,
 )
-@limiter.limit(GENERATION_RATE_LIMIT)
+@limiter.limit(AUTH_RATE_LIMIT)
 async def login_json(
     request: Request,
     response: Response,
@@ -131,16 +167,28 @@ async def login_json(
     user_store: Annotated[UserStore, Depends(get_user_store)],
 ) -> Token:
     """Authenticate user with JSON body and return JWT access token."""
-    user = user_store.authenticate_user(body.username, body.password)
+    user = await user_store.authenticate_user(body.username, body.password)
 
-    if not user and REQUIRE_AUTH is False and body.username == "dev":
-        user = user_store.get_user_by_username("dev")
+    if (
+        not user
+        and REQUIRE_AUTH is False
+        and DEV_MODE
+        and ALLOW_DEV_FALLBACK
+        and body.username == "dev"
+    ):
+        user = await user_store.get_user_by_username("dev")
 
-    if not user and body.username == "dev" and body.password == "dev123":
+    if (
+        not user
+        and DEV_MODE
+        and ALLOW_DEV_FALLBACK
+        and body.username == "dev"
+        and body.password == "dev123"
+    ):
         try:
-            user = user_store.create_user("dev", "dev123")
+            user = await user_store.create_user("dev", "dev123", enforce_policy=False)
         except ValueError:
-            user = user_store.get_user_by_username("dev")
+            user = await user_store.get_user_by_username("dev")
 
     if not user:
         raise HTTPException(
@@ -161,8 +209,19 @@ async def login_json(
         expires_delta=access_token_expires,
     )
 
+    refresh_token = None
+    if REFRESH_TOKENS_ENABLED:
+        refresh_token = _generate_refresh_token()
+        repo = RefreshTokenRepository()
+        await repo.create(
+            user_id=user.id,
+            token_hash=_hash_refresh_token(refresh_token),
+            expires_at=datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
+        )
+
     return Token(
         access_token=access_token,
+        refresh_token=refresh_token,
         token_type="bearer",
         expires_in=TOKEN_EXPIRE_MINUTES * 60,
     )
@@ -192,7 +251,7 @@ Username requirements:
 - Alphanumeric, underscores, and hyphens only
 """,
 )
-@limiter.limit(GENERATION_RATE_LIMIT)
+@limiter.limit(AUTH_RATE_LIMIT)
 async def register_user(
     request: Request,
     response: Response,
@@ -208,15 +267,23 @@ async def register_user(
         )
 
     # Check if username is already taken
-    if user_store.user_exists(body.username):
+    if await user_store.user_exists(body.username):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Username already registered",
         )
 
+    if PASSWORD_POLICY_ENFORCE:
+        errors = validate_password_policy(body.password)
+        if errors:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=" ".join(errors),
+            )
+
     # Create the user
     try:
-        user = user_store.create_user(
+        user = await user_store.create_user(
             username=body.username,
             password=body.password,
         )
@@ -229,6 +296,48 @@ async def register_user(
     return UserResponse(
         id=user.id,
         username=user.username,
+        role=user.role,
+        is_active=user.is_active,
+        created_at=user.created_at,
+    )
+
+
+@router.post(
+    "/users/{user_id}/role",
+    response_model=UserResponse,
+    responses={
+        200: {"description": "User role updated"},
+        404: {"model": ErrorResponse, "description": "User not found"},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
+    },
+    summary="Update user role",
+    description="Update a user's role (admin only).",
+)
+@limiter.limit(DEFAULT_RATE_LIMIT)
+async def update_user_role(
+    request: Request,
+    response: Response,
+    user_id: str,
+    body: SetUserRoleRequest,
+    current_user: Annotated[UserInDB, Depends(require_admin_access)] = None,
+) -> UserResponse:
+    repo = UserRepository()
+    updated = await repo.set_role(user_id, body.role)
+    if not updated:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+    user = await repo.get_by_id(user_id)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+    return UserResponse(
+        id=user.id,
+        username=user.username,
+        role=user.role,
         is_active=user.is_active,
         created_at=user.created_at,
     )
@@ -255,6 +364,7 @@ async def get_current_user_info(
     return UserResponse(
         id=current_user.id,
         username=current_user.username,
+        role=current_user.role,
         is_active=current_user.is_active,
         created_at=current_user.created_at,
     )
@@ -289,6 +399,7 @@ async def get_auth_status(
         user_response = UserResponse(
             id=current_user.id,
             username=current_user.username,
+            role=current_user.role,
             is_active=current_user.is_active,
             created_at=current_user.created_at,
         )
@@ -299,3 +410,85 @@ async def get_auth_status(
         auth_required=REQUIRE_AUTH,
         registration_enabled=ALLOW_REGISTRATION,
     )
+
+
+@router.post(
+    "/refresh",
+    response_model=Token,
+    responses={
+        200: {"description": "Token refreshed"},
+        401: {"description": "Invalid refresh token"},
+    },
+    summary="Refresh access token",
+)
+@limiter.limit(AUTH_RATE_LIMIT)
+async def refresh_access_token(
+    request: Request,
+    response: Response,
+    body: RefreshTokenRequest,
+) -> Token:
+    if not REFRESH_TOKENS_ENABLED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Refresh tokens are disabled",
+        )
+
+    token_hash = _hash_refresh_token(body.refresh_token)
+    repo = RefreshTokenRepository()
+    record = await repo.get_by_hash(token_hash)
+    if not record or record.get("revoked_at"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
+        )
+    expires_at = record.get("expires_at")
+    if expires_at and expires_at < datetime.now(timezone.utc):
+        await repo.revoke(token_hash)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token expired",
+        )
+
+    user_repo = UserRepository()
+    user = await user_repo.get_by_id(record["user_id"])
+    access_token_expires = timedelta(minutes=TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": record["user_id"], "username": user.username if user else None},
+        expires_delta=access_token_expires,
+    )
+
+    refresh_token = body.refresh_token
+    if REFRESH_ROTATE:
+        await repo.revoke(token_hash)
+        refresh_token = _generate_refresh_token()
+        await repo.create(
+            user_id=record["user_id"],
+            token_hash=_hash_refresh_token(refresh_token),
+            expires_at=datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
+        )
+
+    return Token(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        token_type="bearer",
+        expires_in=TOKEN_EXPIRE_MINUTES * 60,
+    )
+
+
+@router.post(
+    "/logout",
+    responses={
+        200: {"description": "Token revoked"},
+    },
+    summary="Revoke refresh token",
+)
+@limiter.limit(AUTH_RATE_LIMIT)
+async def logout(
+    request: Request,
+    response: Response,
+    body: RefreshTokenRequest,
+) -> dict:
+    token_hash = _hash_refresh_token(body.refresh_token)
+    repo = RefreshTokenRepository()
+    await repo.revoke(token_hash)
+    return {"revoked": True}

@@ -4,6 +4,7 @@ This module provides rate limiting using SlowAPI (built on limits library).
 Configuration is done via environment variables:
 - MOVIECON_RATE_LIMIT: Default rate limit (default: "100/minute")
 - MOVIECON_RATE_LIMIT_GENERATION: Stricter limit for AI endpoints (default: "10/minute")
+- MOVIECON_RATE_LIMIT_AUTH: Stricter limit for auth endpoints (default: "10/minute")
 - MOVIECON_RATE_LIMIT_BACKEND: Storage backend - "memory" or "redis" (default: "memory")
 - MOVIECON_REDIS_URL: Redis connection URL (default: "redis://localhost:6379/0")
 - MOVIECON_REDIS_PREFIX: Key prefix for Redis (default: "moviecon:ratelimit:")
@@ -24,6 +25,7 @@ logger = logging.getLogger(__name__)
 # Environment variable configuration
 DEFAULT_RATE_LIMIT = os.environ.get("MOVIECON_RATE_LIMIT", "100/minute")
 GENERATION_RATE_LIMIT = os.environ.get("MOVIECON_RATE_LIMIT_GENERATION", "10/minute")
+AUTH_RATE_LIMIT = os.environ.get("MOVIECON_RATE_LIMIT_AUTH", "10/minute")
 
 # Redis configuration
 RATE_LIMIT_BACKEND = os.environ.get("MOVIECON_RATE_LIMIT_BACKEND", "memory").lower()
@@ -257,6 +259,7 @@ def get_rate_limit_status() -> dict:
         "redis_available": _redis_available,
         "default_limit": DEFAULT_RATE_LIMIT,
         "generation_limit": GENERATION_RATE_LIMIT,
+        "auth_limit": AUTH_RATE_LIMIT,
         "configured_backend": RATE_LIMIT_BACKEND,
         "redis_url": _mask_redis_url(REDIS_URL) if RATE_LIMIT_BACKEND == "redis" else None,
         "redis_prefix": REDIS_PREFIX if RATE_LIMIT_BACKEND == "redis" else None,

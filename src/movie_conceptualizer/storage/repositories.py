@@ -10,7 +10,10 @@ including parameter placeholder styles (? vs $1) and JSON field handling.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+import hashlib
+import hmac
+import os
+from datetime import datetime, timezone, timedelta
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, TypeVar
 from uuid import uuid4
@@ -29,6 +32,8 @@ if TYPE_CHECKING:
 
 # Type variables for generic repository
 T = TypeVar("T", bound=BaseModel)
+
+AUDIT_LOG_SIGNING_KEY = os.environ.get("MOVIECON_AUDIT_LOG_SIGNING_KEY", "")
 
 
 # Define schemas locally to avoid circular imports with api.schemas
@@ -210,6 +215,20 @@ class ScriptModel(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class UserModel(BaseModel):
+    """Pydantic model for user database representation."""
+
+    id: str
+    username: str
+    hashed_password: str
+    role: str = "user"
+    is_active: bool = True
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class JobModel(BaseModel):
     """Pydantic model for background job representation."""
 
@@ -238,6 +257,8 @@ class JobAuditLogModel(BaseModel):
     action: str
     target_job_id: str | None = None
     metadata: str | None = None
+    prev_hash: str | None = None
+    hash: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -383,6 +404,168 @@ class BaseRepository:
             return data
         # SQLite needs JSON string
         return _json_dumps(data)
+
+
+class UserRepository(BaseRepository):
+    """Repository for user accounts."""
+
+    async def create(
+        self,
+        username: str,
+        hashed_password: str,
+        role: str = "user",
+        is_active: bool = True,
+    ) -> UserModel:
+        """Create a new user record."""
+        user_id = str(uuid4())
+        now = datetime.now(timezone.utc)
+        query = (
+            "INSERT INTO users (id, username, hashed_password, role, is_active, created_at, updated_at) "
+            f"VALUES ({self._params(7)})"
+        )
+        params = (user_id, username, hashed_password, role, is_active, now, now)
+        async with self._db.connection() as conn:
+            await self._execute(conn, query, params)
+
+        return UserModel(
+            id=user_id,
+            username=username,
+            hashed_password=hashed_password,
+            role=role,
+            is_active=is_active,
+            created_at=now,
+            updated_at=now,
+        )
+
+    async def get_by_id(self, user_id: str) -> UserModel | None:
+        query = f"SELECT * FROM users WHERE id = {self._param(1)}"
+        async with self._db.connection() as conn:
+            row = await self._fetchone(conn, query, (user_id,))
+            if row is None:
+                return None
+            return UserModel(**_row_to_dict(row, self.backend))
+
+    async def get_by_username(self, username: str) -> UserModel | None:
+        query = f"SELECT * FROM users WHERE username = {self._param(1)}"
+        async with self._db.connection() as conn:
+            row = await self._fetchone(conn, query, (username,))
+            if row is None:
+                return None
+            return UserModel(**_row_to_dict(row, self.backend))
+
+    async def user_exists(self, username: str) -> bool:
+        query = f"SELECT COUNT(*) FROM users WHERE username = {self._param(1)}"
+        async with self._db.connection() as conn:
+            count = await self._fetchval(conn, query, (username,))
+            return bool(count)
+
+    async def set_active(self, user_id: str, is_active: bool) -> bool:
+        query = (
+            "UPDATE users SET is_active = {is_active}, updated_at = {updated_at} "
+            "WHERE id = {user_id}"
+        ).format(
+            is_active=self._param(1),
+            updated_at=self._param(2),
+            user_id=self._param(3),
+        )
+        params = (is_active, datetime.now(timezone.utc), user_id)
+        async with self._db.connection() as conn:
+            result = await self._execute(conn, query, params)
+            if self.backend == DatabaseBackend.POSTGRESQL:
+                try:
+                    return int(str(result).split()[-1]) > 0
+                except Exception:
+                    return True
+            return True
+
+    async def set_role(self, user_id: str, role: str) -> bool:
+        query = (
+            "UPDATE users SET role = {role}, updated_at = {updated_at} "
+            "WHERE id = {user_id}"
+        ).format(
+            role=self._param(1),
+            updated_at=self._param(2),
+            user_id=self._param(3),
+        )
+        params = (role, datetime.now(timezone.utc), user_id)
+        async with self._db.connection() as conn:
+            result = await self._execute(conn, query, params)
+            if self.backend == DatabaseBackend.POSTGRESQL:
+                try:
+                    return int(str(result).split()[-1]) > 0
+                except Exception:
+                    return True
+            return True
+
+
+class JobIdempotencyRepository(BaseRepository):
+    """Repository for job idempotency records."""
+
+    async def get_job_id(
+        self,
+        idempotency_key: str,
+        endpoint: str,
+        user_id: str | None,
+        max_age_seconds: int | None = None,
+    ) -> str | None:
+        params: list[Any] = []
+        conditions = []
+        conditions.append(f"idempotency_key = {self._param(len(params) + 1)}")
+        params.append(idempotency_key)
+        conditions.append(f"endpoint = {self._param(len(params) + 1)}")
+        params.append(endpoint)
+        if user_id is None:
+            conditions.append("user_id IS NULL")
+        else:
+            conditions.append(f"user_id = {self._param(len(params) + 1)}")
+            params.append(user_id)
+        if max_age_seconds is not None and max_age_seconds > 0:
+            conditions.append(f"created_at >= {self._param(len(params) + 1)}")
+            params.append(datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds))
+        where_clause = " AND ".join(conditions)
+
+        query = f"SELECT job_id FROM job_idempotency WHERE {where_clause}"
+
+        async with self._db.connection() as conn:
+            row = await self._fetchone(conn, query, tuple(params))
+            if row is None:
+                return None
+            data = _row_to_dict(row, self.backend)
+            return data.get("job_id")
+
+    async def create(
+        self,
+        idempotency_key: str,
+        endpoint: str,
+        job_id: str,
+        user_id: str | None,
+    ) -> None:
+        now = datetime.now(timezone.utc)
+        record_id = str(uuid4())
+        query = (
+            "INSERT INTO job_idempotency "
+            "(id, idempotency_key, user_id, endpoint, job_id, created_at) "
+            f"VALUES ({self._params(6)})"
+        )
+        params = (record_id, idempotency_key, user_id, endpoint, job_id, now)
+        async with self._db.connection() as conn:
+            await self._execute(conn, query, params)
+
+    async def purge_expired(self, max_age_seconds: int) -> int:
+        if max_age_seconds <= 0:
+            return 0
+        older_than = datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds)
+        query = f"DELETE FROM job_idempotency WHERE created_at < {self._param(1)}"
+        params = (older_than,)
+        async with self._db.connection() as conn:
+            if self.backend == DatabaseBackend.POSTGRESQL:
+                result = await conn.execute(query, *params)
+                try:
+                    return int(str(result).split()[-1])
+                except Exception:
+                    return 0
+            cursor = await conn.execute(query, params)
+            return cursor.rowcount
 
 
 class JobRepository(BaseRepository):
@@ -640,112 +823,6 @@ class JobRepository(BaseRepository):
             "avg_duration_seconds": avg_duration or 0.0,
         }
 
-
-class JobAuditLogRepository(BaseRepository):
-    """Repository for job audit logs."""
-
-    async def create(
-        self,
-        actor_user_id: str,
-        action: str,
-        target_job_id: str | None = None,
-        metadata: str | None = None,
-    ) -> JobAuditLogModel:
-        query = (
-            "INSERT INTO job_audit_logs (id, actor_user_id, action, target_job_id, metadata, created_at) "
-            f"VALUES ({self._params(6)})"
-        )
-        now = datetime.now(timezone.utc)
-        log_id = str(uuid4())
-        params = (log_id, actor_user_id, action, target_job_id, metadata, now)
-        async with self._db.connection() as conn:
-            await self._execute(conn, query, params)
-
-        return JobAuditLogModel(
-            id=log_id,
-            actor_user_id=actor_user_id,
-            action=action,
-            target_job_id=target_job_id,
-            metadata=metadata,
-            created_at=now,
-        )
-
-    async def list(self, limit: int = 100) -> list[JobAuditLogModel]:
-        query = (
-            "SELECT * FROM job_audit_logs ORDER BY created_at DESC "
-            f"LIMIT {self._param(1)}"
-        )
-        async with self._db.connection() as conn:
-            rows = await self._fetchall(conn, query, (limit,))
-            return [JobAuditLogModel(**_row_to_dict(row, self.backend)) for row in rows]
-
-    async def purge(self, older_than: datetime | None = None) -> int:
-        """Purge audit logs by age."""
-        conditions = []
-        params: list[Any] = []
-        if older_than:
-            conditions.append(f"created_at < {self._param(1)}")
-            params.append(older_than)
-        where_clause = f" WHERE {' AND '.join(conditions)}" if conditions else ""
-        query = f"DELETE FROM job_audit_logs{where_clause}"
-
-        async with self._db.connection() as conn:
-            if self.backend == DatabaseBackend.POSTGRESQL:
-                result = await conn.execute(query, *params) if params else await conn.execute(query)
-                try:
-                    return int(str(result).split()[-1])
-                except Exception:
-                    return 0
-            if params:
-                cursor = await conn.execute(query, tuple(params))
-            else:
-                cursor = await conn.execute(query)
-            return cursor.rowcount
-
-    async def get_metrics(self) -> dict[str, Any]:
-        """Get aggregate job metrics."""
-        async with self._db.connection() as conn:
-            status_rows_raw = await self._fetchall(
-                conn,
-                "SELECT status, COUNT(*) as count FROM jobs GROUP BY status",
-            )
-            status_rows = [_row_to_dict(row, self.backend) for row in status_rows_raw]
-            status_counts = {row["status"]: row["count"] for row in status_rows}
-
-            total_row_raw = await self._fetchone(conn, "SELECT COUNT(*) as count FROM jobs")
-            total_row = _row_to_dict(total_row_raw, self.backend) if total_row_raw else {"count": 0}
-            total = total_row["count"]
-
-            avg_attempts_row_raw = await self._fetchone(conn, "SELECT AVG(attempts) as avg FROM jobs")
-            avg_attempts_row = _row_to_dict(avg_attempts_row_raw, self.backend) if avg_attempts_row_raw else {"avg": 0.0}
-            avg_attempts = avg_attempts_row["avg"]
-
-            if self.backend == DatabaseBackend.POSTGRESQL:
-                duration_row_raw = await self._fetchone(
-                    conn,
-                    "SELECT AVG(EXTRACT(EPOCH FROM (updated_at - created_at))) as avg FROM jobs",
-                )
-            else:
-                duration_row_raw = await self._fetchone(
-                    conn,
-                    "SELECT AVG((julianday(updated_at) - julianday(created_at)) * 86400.0) as avg FROM jobs",
-                )
-
-            duration_row = _row_to_dict(duration_row_raw, self.backend) if duration_row_raw else {"avg": 0.0}
-            avg_duration = duration_row["avg"]
-
-        succeeded = status_counts.get("succeeded", 0)
-        failed = status_counts.get("failed", 0)
-        success_rate = (succeeded / total) if total else 0.0
-
-        return {
-            "total": total,
-            "status_counts": status_counts,
-            "success_rate": success_rate,
-            "avg_attempts": avg_attempts or 0.0,
-            "avg_duration_seconds": avg_duration or 0.0,
-        }
-
     async def purge_jobs(
         self,
         status: str | None = None,
@@ -807,46 +884,163 @@ class JobAuditLogRepository(BaseRepository):
                     cursor = await conn.execute(query)
                 return cursor.rowcount
 
-    async def _fetchval(self, conn: Any, query: str, params: tuple[Any, ...] | None = None) -> Any:
-        """Execute a query and fetch a single value.
 
-        Args:
-            conn: Database connection.
-            query: SQL query string.
-            params: Query parameters (optional).
+class JobAuditLogRepository(BaseRepository):
+    """Repository for job audit logs."""
 
-        Returns:
-            Single value or None.
-        """
-        if self.backend == DatabaseBackend.POSTGRESQL:
+    async def _get_last_hash(self) -> str | None:
+        query = "SELECT hash FROM job_audit_logs ORDER BY created_at DESC LIMIT 1"
+        async with self._db.connection() as conn:
+            row = await self._fetchone(conn, query)
+            if row is None:
+                return None
+            data = _row_to_dict(row, self.backend)
+            return data.get("hash")
+
+    def _compute_hash(
+        self,
+        prev_hash: str | None,
+        actor_user_id: str,
+        action: str,
+        target_job_id: str | None,
+        metadata: str | None,
+        created_at: datetime,
+    ) -> str:
+        payload = "|".join(
+            [
+                prev_hash or "",
+                actor_user_id,
+                action,
+                target_job_id or "",
+                metadata or "",
+                created_at.isoformat(),
+            ]
+        )
+        if AUDIT_LOG_SIGNING_KEY:
+            return hmac.new(
+                AUDIT_LOG_SIGNING_KEY.encode("utf-8"),
+                payload.encode("utf-8"),
+                hashlib.sha256,
+            ).hexdigest()
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    async def create(
+        self,
+        actor_user_id: str,
+        action: str,
+        target_job_id: str | None = None,
+        metadata: str | None = None,
+    ) -> JobAuditLogModel:
+        now = datetime.now(timezone.utc)
+        prev_hash = await self._get_last_hash()
+        log_hash = self._compute_hash(prev_hash, actor_user_id, action, target_job_id, metadata, now)
+        query = (
+            "INSERT INTO job_audit_logs "
+            "(id, actor_user_id, action, target_job_id, metadata, prev_hash, hash, created_at) "
+            f"VALUES ({self._params(8)})"
+        )
+        log_id = str(uuid4())
+        params = (log_id, actor_user_id, action, target_job_id, metadata, prev_hash, log_hash, now)
+        async with self._db.connection() as conn:
+            await self._execute(conn, query, params)
+
+        return JobAuditLogModel(
+            id=log_id,
+            actor_user_id=actor_user_id,
+            action=action,
+            target_job_id=target_job_id,
+            metadata=metadata,
+            prev_hash=prev_hash,
+            hash=log_hash,
+            created_at=now,
+        )
+
+    async def list(self, limit: int = 100) -> list[JobAuditLogModel]:
+        query = (
+            "SELECT * FROM job_audit_logs ORDER BY created_at DESC "
+            f"LIMIT {self._param(1)}"
+        )
+        async with self._db.connection() as conn:
+            rows = await self._fetchall(conn, query, (limit,))
+            return [JobAuditLogModel(**_row_to_dict(row, self.backend)) for row in rows]
+
+    async def purge(self, older_than: datetime | None = None) -> int:
+        """Purge audit logs by age."""
+        conditions = []
+        params: list[Any] = []
+        if older_than:
+            conditions.append(f"created_at < {self._param(1)}")
+            params.append(older_than)
+        where_clause = f" WHERE {' AND '.join(conditions)}" if conditions else ""
+        query = f"DELETE FROM job_audit_logs{where_clause}"
+
+        async with self._db.connection() as conn:
+            if self.backend == DatabaseBackend.POSTGRESQL:
+                result = await conn.execute(query, *params) if params else await conn.execute(query)
+                try:
+                    return int(str(result).split()[-1])
+                except Exception:
+                    return 0
             if params:
-                return await conn.fetchval(query, *params)
-            return await conn.fetchval(query)
-        else:
-            if params:
-                cursor = await conn.execute(query, params)
+                cursor = await conn.execute(query, tuple(params))
             else:
                 cursor = await conn.execute(query)
-            row = await cursor.fetchone()
-            return row[0] if row else None
+            return cursor.rowcount
 
-    def _serialize_json(self, data: Any) -> Any:
-        """Serialize data for JSON storage.
 
-        Args:
-            data: Data to serialize.
+class RefreshTokenRepository(BaseRepository):
+    """Repository for refresh tokens."""
 
-        Returns:
-            JSON string for SQLite, Python object for PostgreSQL.
-        """
-        if self.backend == DatabaseBackend.POSTGRESQL:
-            # PostgreSQL JSONB accepts Python objects directly
-            if isinstance(data, BaseModel):
-                return data.model_dump()
-            return data
-        else:
-            # SQLite needs JSON string
-            return _json_dumps(data)
+    async def create(
+        self,
+        user_id: str,
+        token_hash: str,
+        expires_at: datetime,
+    ) -> None:
+        token_id = str(uuid4())
+        now = datetime.now(timezone.utc)
+        query = (
+            "INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at, created_at) "
+            f"VALUES ({self._params(5)})"
+        )
+        params = (token_id, user_id, token_hash, expires_at, now)
+        async with self._db.connection() as conn:
+            await self._execute(conn, query, params)
+
+    async def get_by_hash(self, token_hash: str) -> dict[str, Any] | None:
+        query = f"SELECT * FROM refresh_tokens WHERE token_hash = {self._param(1)}"
+        async with self._db.connection() as conn:
+            row = await self._fetchone(conn, query, (token_hash,))
+            if row is None:
+                return None
+            return _row_to_dict(row, self.backend)
+
+    async def revoke(self, token_hash: str) -> None:
+        query = (
+            "UPDATE refresh_tokens SET revoked_at = {revoked_at} "
+            "WHERE token_hash = {token_hash}"
+        ).format(
+            revoked_at=self._param(1),
+            token_hash=self._param(2),
+        )
+        params = (datetime.now(timezone.utc), token_hash)
+        async with self._db.connection() as conn:
+            await self._execute(conn, query, params)
+
+    async def purge_expired(self) -> int:
+        query = "DELETE FROM refresh_tokens WHERE expires_at < {now}".format(
+            now=self._param(1),
+        )
+        params = (datetime.now(timezone.utc),)
+        async with self._db.connection() as conn:
+            if self.backend == DatabaseBackend.POSTGRESQL:
+                result = await conn.execute(query, *params)
+                try:
+                    return int(str(result).split()[-1])
+                except Exception:
+                    return 0
+            cursor = await conn.execute(query, params)
+            return cursor.rowcount
 
 
 class ProjectRepository(BaseRepository):

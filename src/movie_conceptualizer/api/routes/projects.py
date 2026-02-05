@@ -10,6 +10,7 @@ from movie_conceptualizer.api.dependencies import (
     get_project_store,
     is_admin_user,
     require_auth_if_enabled,
+    require_admin_access,
 )
 from movie_conceptualizer.api.ratelimit import DEFAULT_RATE_LIMIT, limiter
 from movie_conceptualizer.api.schemas import (
@@ -176,13 +177,8 @@ async def assign_project_owner(
     project_id: str,
     body: AssignProjectOwnerRequest,
     store: ProjectStore = Depends(get_project_store),
-    current_user: Annotated[UserInDB, Depends(require_auth_if_enabled)] = None,
+    current_user: Annotated[UserInDB, Depends(require_admin_access)] = None,
 ) -> dict:
-    if current_user is None or not is_admin_user(current_user):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required",
-        )
     if not await store.exists(project_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -208,14 +204,8 @@ async def bulk_assign_project_owner(
     response: Response,
     body: BulkAssignProjectOwnerRequest,
     store: ProjectStore = Depends(get_project_store),
-    current_user: Annotated[UserInDB, Depends(require_auth_if_enabled)] = None,
+    current_user: Annotated[UserInDB, Depends(require_admin_access)] = None,
 ) -> dict:
-    if current_user is None or not is_admin_user(current_user):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required",
-        )
-
     updated = await store.bulk_assign_owner(
         user_id=body.user_id,
         only_unassigned=body.only_unassigned,

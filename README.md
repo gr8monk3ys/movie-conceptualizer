@@ -101,6 +101,8 @@ uvicorn movie_conceptualizer.api.main:app --reload
 API endpoints:
 - `POST /api/v1/auth/token` - Get JWT token
 - `POST /api/v1/auth/register` - Register new user
+- `POST /api/v1/auth/refresh` - Refresh access token
+- `POST /api/v1/auth/logout` - Revoke refresh token
 - `POST /api/v1/projects` - Create project
 - `POST /api/v1/projects/{id}/script` - Upload script
 - `POST /api/v1/projects/{id}/generate` - Run full pipeline
@@ -167,15 +169,38 @@ The platform uses LangGraph to orchestrate three specialized AI agents:
 | **Authentication** | | |
 | `MOVIECON_SECRET_KEY` | (random) | JWT signing key |
 | `MOVIECON_REQUIRE_AUTH` | `false` | Require authentication |
-| `MOVIECON_DEV_MODE` | `true` | Enable dev mode (creates test user) |
-| `MOVIECON_TOKEN_EXPIRE_MINUTES` | `30` | JWT token expiration |
+| `MOVIECON_DEV_MODE` | `true` | Enable dev mode behaviors |
+| `MOVIECON_ALLOW_DEV_FALLBACK` | `false` | Enable dev login/plaintext fallback (dev only) |
+| `MOVIECON_TOKEN_EXPIRE_MINUTES` | `60` | JWT token expiration |
+| `MOVIECON_ADMIN_POLICY` | `role` | Admin policy (`env` or `role`) |
+| `MOVIECON_ADMIN_USERS` | - | Comma-separated admin usernames (required if `ADMIN_POLICY=env`) |
+| `MOVIECON_STRICT_CONFIG` | `false` | Fail startup on config warnings |
+| `MOVIECON_ALLOWED_ROLES` | `user,admin` | Allowed role names |
+| `MOVIECON_PASSWORD_MIN_LENGTH` | `8` | Minimum password length |
+| `MOVIECON_PASSWORD_REQUIRE_UPPER` | `false` | Require uppercase letter |
+| `MOVIECON_PASSWORD_REQUIRE_LOWER` | `true` | Require lowercase letter |
+| `MOVIECON_PASSWORD_REQUIRE_DIGIT` | `true` | Require digit |
+| `MOVIECON_PASSWORD_REQUIRE_SPECIAL` | `false` | Require special character |
+| `MOVIECON_PASSWORD_POLICY_ENFORCE` | `true` | Enforce password policy on registration |
+| `MOVIECON_REFRESH_TOKENS_ENABLED` | `true` | Enable refresh tokens |
+| `MOVIECON_REFRESH_TOKEN_EXPIRE_DAYS` | `14` | Refresh token TTL (days) |
+| `MOVIECON_REFRESH_ROTATE` | `true` | Rotate refresh tokens on use |
+| `MOVIECON_ADMIN_MFA_SECRET` | - | Base32 TOTP secret for admin MFA |
+| `MOVIECON_ADMIN_MFA_WINDOW` | `1` | TOTP window (steps) |
 | `MOVIECON_INPROCESS_INLINE` | `false` | Run in-process jobs inline (useful for tests) |
+| `MOVIECON_IDEMPOTENCY_TTL_DAYS` | `7` | Idempotency TTL (days) |
+| `MOVIECON_AUDIT_LOG_SIGNING_KEY` | - | HMAC key for audit log hash chaining |
+| `MOVIECON_METRICS_ENABLED` | `true` | Enable `/metrics` endpoint |
 | **Rate Limiting** | | |
 | `MOVIECON_RATE_LIMIT_BACKEND` | `memory` | Backend (`memory` or `redis`) |
 | `MOVIECON_RATE_LIMIT` | `100/minute` | Default rate limit |
 | `MOVIECON_RATE_LIMIT_GENERATION` | `10/minute` | AI endpoint limit |
+| `MOVIECON_RATE_LIMIT_AUTH` | `10/minute` | Auth endpoint limit |
 | `MOVIECON_REDIS_URL` | `redis://localhost:6379/0` | Redis connection URL |
 | `MOVIECON_REDIS_PREFIX` | `moviecon:ratelimit:` | Redis key prefix |
+| **Logging** | | |
+| `MOVIECON_LOG_LEVEL` | `INFO` | Log level |
+| `MOVIECON_LOG_FORMAT` | `json` | Log format (`json` or `text`) |
 
 ### Database Configuration
 
@@ -219,6 +244,24 @@ moviecon serve
 - PDF - Shot lists and storyboard packets (planned)
 
 ## Development
+
+### Schema Evolution
+
+Migrations are applied automatically on startup. For production, take a backup before upgrading.
+
+```bash
+moviecon db backup
+```
+
+Commands:
+```bash
+moviecon db status
+moviecon db migrate
+```
+
+Rollback strategy:
+- SQLite: restore the previous database file backup.
+- PostgreSQL: restore a `pg_dump` snapshot taken before migration.
 
 ```bash
 # Run tests (109 tests)
@@ -279,15 +322,30 @@ Job endpoints:
 - `POST /api/v1/jobs/{id}/retry` - re-enqueue failed job (arq backend only)
 - `GET /api/v1/jobs/metrics` - job metrics (admin)
 - `POST /api/v1/jobs/purge` - purge jobs (admin)
+- `POST /api/v1/jobs/idempotency/purge` - purge idempotency records (admin)
 - `GET /api/v1/jobs/audit` - audit log list (admin, supports `format=csv`)
 - `POST /api/v1/jobs/audit/purge` - purge audit logs (admin)
+- `GET /metrics` - request + job metrics (if enabled)
 
 Admin access:
-- Set `MOVIECON_ADMIN_USERS` to a comma-separated list of usernames to restrict admin endpoints.
+- Default policy is role-based. Assign `admin` role to users who need admin access.
+- Set `MOVIECON_ADMIN_POLICY=env` and `MOVIECON_ADMIN_USERS` to restrict admin endpoints by username.
+Roles:
+- Set `MOVIECON_ADMIN_POLICY=role` to require users with role `admin`.
+- Use `POST /api/v1/auth/users/{id}/role` (admin only) to update roles.
 Audit logging:
-- Admin job actions are recorded in `job_audit_logs`.
+- Admin job actions are recorded in `job_audit_logs`. Set `MOVIECON_AUDIT_LOG_SIGNING_KEY` to HMAC-sign audit hashes.
 Audit CSV format:
 - `created_at` values are UTC ISO8601 timestamps with a `Z` suffix.
+- `schema_version` indicates the audit CSV schema version.
+Dev auth fallback:
+- Set `MOVIECON_ALLOW_DEV_FALLBACK=true` (with `MOVIECON_DEV_MODE=true`) to enable dev login shortcuts. Disabled by default.
+Logging:
+- Logs include `request_id` when clients provide an `X-Request-ID` header. For job workers, `request_id` is set to the job ID.
+Idempotency:
+- Provide an `Idempotency-Key` header on async generation requests to dedupe job submissions.
+Health checks:
+- `GET /health/jobs` returns background job backend health.
 
 Ownership:
 - Projects and jobs are associated with a `user_id`. Non-admin users can only access their own records.

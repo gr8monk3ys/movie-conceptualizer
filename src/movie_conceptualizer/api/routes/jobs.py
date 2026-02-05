@@ -15,7 +15,7 @@ from movie_conceptualizer.api.jobs import get_job_manager
 from movie_conceptualizer.api.dependencies import (
     UserInDB,
     is_admin_user,
-    require_admin_if_enabled,
+    require_admin_access,
     require_auth_if_enabled,
 )
 from movie_conceptualizer.api.ratelimit import DEFAULT_RATE_LIMIT, limiter
@@ -33,7 +33,7 @@ from movie_conceptualizer.api.job_payloads import (
     StoryboardJobPayload,
     decode_payload,
 )
-from movie_conceptualizer.storage import JobAuditLogRepository, JobRepository
+from movie_conceptualizer.storage import JobAuditLogRepository, JobIdempotencyRepository, JobRepository
 
 from movie_conceptualizer.api.arq_queue import (
     enqueue_analysis_job,
@@ -43,6 +43,8 @@ from movie_conceptualizer.api.arq_queue import (
 )
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
+IDEMPOTENCY_TTL_DAYS = int(os.environ.get("MOVIECON_IDEMPOTENCY_TTL_DAYS", "7"))
+JOB_AUDIT_SCHEMA_VERSION = 1
 
 
 def _format_datetime(value: datetime) -> str:
@@ -117,7 +119,7 @@ async def list_dead_letter_jobs(
     request: Request,
     response: Response,
     limit: int = Query(50, ge=1, le=200, description="Number of records to return"),
-    current_user: Annotated[UserInDB, Depends(require_admin_if_enabled)] = None,
+    current_user: Annotated[UserInDB, Depends(require_admin_access)] = None,
 ):
     repo = JobRepository()
     records = await repo.list_dead_letters(limit=limit)
@@ -147,7 +149,7 @@ async def retry_job(
     request: Request,
     response: Response,
     job_id: str,
-    current_user: Annotated[UserInDB, Depends(require_admin_if_enabled)] = None,
+    current_user: Annotated[UserInDB, Depends(require_admin_access)] = None,
 ):
     repo = JobRepository()
     job = await repo.get(job_id)
@@ -236,7 +238,7 @@ async def replay_dead_letter_jobs(
     request: Request,
     response: Response,
     limit: int = Query(50, ge=1, le=200, description="Number of records to replay"),
-    current_user: Annotated[UserInDB, Depends(require_admin_if_enabled)] = None,
+    current_user: Annotated[UserInDB, Depends(require_admin_access)] = None,
 ):
     backend = os.environ.get("MOVIECON_JOB_BACKEND", "inprocess").lower()
     if backend != "arq":
@@ -329,7 +331,7 @@ async def replay_dead_letter_jobs(
 async def get_job_metrics(
     request: Request,
     response: Response,
-    current_user: Annotated[UserInDB, Depends(require_admin_if_enabled)] = None,
+    current_user: Annotated[UserInDB, Depends(require_admin_access)] = None,
 ) -> JobMetricsResponse:
     repo = JobRepository()
     metrics = await repo.get_metrics()
@@ -361,7 +363,7 @@ async def purge_jobs(
     include_dead_letter: bool = Query(
         False, description="Also purge dead-letter records"
     ),
-    current_user: Annotated[UserInDB, Depends(require_admin_if_enabled)] = None,
+    current_user: Annotated[UserInDB, Depends(require_admin_access)] = None,
 ):
     repo = JobRepository()
     older_than = (
@@ -391,6 +393,44 @@ async def purge_jobs(
     }
 
 
+@router.post(
+    "/idempotency/purge",
+    responses={
+        200: {"description": "Idempotency records purged"},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
+    },
+    summary="Purge idempotency records",
+    description="Delete idempotency records older than the configured TTL.",
+)
+@limiter.limit(DEFAULT_RATE_LIMIT)
+async def purge_job_idempotency(
+    request: Request,
+    response: Response,
+    older_than_days: int | None = Query(
+        None, ge=1, le=3650, description="Purge idempotency records older than N days"
+    ),
+    current_user: Annotated[UserInDB, Depends(require_admin_access)] = None,
+):
+    ttl_days = older_than_days if older_than_days is not None else IDEMPOTENCY_TTL_DAYS
+    if ttl_days <= 0:
+        return {"deleted": 0, "older_than_days": ttl_days}
+
+    repo = JobIdempotencyRepository()
+    deleted = await repo.purge_expired(ttl_days * 24 * 60 * 60)
+
+    audit_repo = JobAuditLogRepository()
+    await audit_repo.create(
+        actor_user_id=current_user.id,
+        action="job_idempotency_purge",
+        metadata=f"older_than_days={ttl_days},deleted={deleted}",
+    )
+
+    return {
+        "deleted": deleted,
+        "older_than_days": ttl_days,
+    }
+
+
 @router.get(
     "/audit",
     responses={
@@ -406,7 +446,7 @@ async def list_job_audit_logs(
     response: Response,
     format: str = Query("json", description="Response format: json or csv"),
     limit: int = Query(100, ge=1, le=500, description="Number of records to return"),
-    current_user: Annotated[UserInDB, Depends(require_admin_if_enabled)] = None,
+    current_user: Annotated[UserInDB, Depends(require_admin_access)] = None,
 ):
     repo = JobAuditLogRepository()
     logs = await repo.list(limit=limit)
@@ -423,14 +463,29 @@ async def list_job_audit_logs(
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         output = io.StringIO()
         writer = csv.writer(output)
-        writer.writerow(["id", "actor_user_id", "action", "target_job_id", "metadata", "created_at"])
+        writer.writerow(
+            [
+                "schema_version",
+                "id",
+                "actor_user_id",
+                "action",
+                "target_job_id",
+                "metadata",
+                "prev_hash",
+                "hash",
+                "created_at",
+            ]
+        )
         for log in logs:
             writer.writerow([
+                JOB_AUDIT_SCHEMA_VERSION,
                 log.id,
                 log.actor_user_id,
                 log.action,
                 log.target_job_id,
                 log.metadata,
+                log.prev_hash,
+                log.hash,
                 _format_datetime(log.created_at),
             ])
         return Response(
@@ -449,6 +504,7 @@ async def list_job_audit_logs(
     return {
         "items": [log.model_dump(mode="json") for log in logs],
         "total": len(logs),
+        "schema_version": JOB_AUDIT_SCHEMA_VERSION,
     }
 
 
@@ -468,7 +524,7 @@ async def purge_job_audit_logs(
     older_than_days: int = Query(
         30, ge=1, le=3650, description="Purge logs older than N days"
     ),
-    current_user: Annotated[UserInDB, Depends(require_admin_if_enabled)] = None,
+    current_user: Annotated[UserInDB, Depends(require_admin_access)] = None,
 ):
     repo = JobAuditLogRepository()
     older_than = datetime.now(timezone.utc) - timedelta(days=older_than_days)
