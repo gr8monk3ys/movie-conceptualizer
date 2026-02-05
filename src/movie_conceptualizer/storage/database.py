@@ -15,24 +15,47 @@ Environment Variables:
 from __future__ import annotations
 
 import os
+import sqlite3
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from datetime import datetime, timezone
 
 import aiosqlite
 
 if TYPE_CHECKING:
     from aiosqlite import Connection as SQLiteConnection
 
+
+def _configure_sqlite_datetime() -> None:
+    """Register adapters/converters for timezone-aware datetimes in SQLite."""
+    def _adapt_datetime(value: datetime) -> str:
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc).isoformat()
+
+    def _convert_datetime(raw: bytes) -> datetime:
+        text = raw.decode("utf-8")
+        parsed = datetime.fromisoformat(text)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed
+
+    sqlite3.register_adapter(datetime, _adapt_datetime)
+    sqlite3.register_converter("TIMESTAMP", _convert_datetime)
+
+
+_configure_sqlite_datetime()
+
 # Default database path for SQLite
 DEFAULT_DB_DIR = Path.home() / ".movie-conceptualizer"
 DEFAULT_DB_PATH = DEFAULT_DB_DIR / "data.db"
 
 # Current schema version
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 5
 
 
 class DatabaseBackend(StrEnum):
@@ -151,6 +174,7 @@ CREATE TABLE IF NOT EXISTS schema_version (
 SQLITE_CREATE_PROJECTS_TABLE = """
 CREATE TABLE IF NOT EXISTS projects (
     id TEXT PRIMARY KEY,
+    user_id TEXT,
     title TEXT NOT NULL,
     description TEXT,
     genre TEXT,
@@ -260,6 +284,49 @@ CREATE TABLE IF NOT EXISTS project_analyses (
 );
 """
 
+SQLITE_CREATE_JOBS_TABLE = """
+CREATE TABLE IF NOT EXISTS jobs (
+    id TEXT PRIMARY KEY,
+    project_id TEXT,
+    user_id TEXT,
+    status TEXT NOT NULL,
+    description TEXT,
+    error TEXT,
+    last_error TEXT,
+    attempts INTEGER DEFAULT 0,
+    progress REAL DEFAULT 0.0,
+    current_step TEXT,
+    payload TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+SQLITE_CREATE_JOBS_DEAD_LETTER_TABLE = """
+CREATE TABLE IF NOT EXISTS jobs_dead_letter (
+    id TEXT PRIMARY KEY,
+    job_id TEXT NOT NULL,
+    project_id TEXT,
+    user_id TEXT,
+    status TEXT NOT NULL,
+    description TEXT,
+    error TEXT,
+    payload TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+SQLITE_CREATE_JOB_AUDIT_TABLE = """
+CREATE TABLE IF NOT EXISTS job_audit_logs (
+    id TEXT PRIMARY KEY,
+    actor_user_id TEXT NOT NULL,
+    action TEXT NOT NULL,
+    target_job_id TEXT,
+    metadata TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
 SQLITE_CREATE_INDEXES = """
 CREATE INDEX IF NOT EXISTS idx_scripts_project_id ON scripts(project_id);
 CREATE INDEX IF NOT EXISTS idx_scenes_project_id ON scenes(project_id);
@@ -268,6 +335,26 @@ CREATE INDEX IF NOT EXISTS idx_shot_lists_project_id ON shot_lists(project_id);
 CREATE INDEX IF NOT EXISTS idx_storyboards_project_id ON storyboards(project_id);
 CREATE INDEX IF NOT EXISTS idx_analyses_project_id ON analyses(project_id);
 CREATE INDEX IF NOT EXISTS idx_project_analyses_project_id ON project_analyses(project_id);
+"""
+
+SQLITE_CREATE_PROJECT_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_projects_user_id ON projects(user_id);
+"""
+
+SQLITE_CREATE_JOBS_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_jobs_project_id ON jobs(project_id);
+CREATE INDEX IF NOT EXISTS idx_jobs_user_id ON jobs(user_id);
+"""
+
+SQLITE_CREATE_JOBS_DEAD_LETTER_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_jobs_dead_letter_project_id ON jobs_dead_letter(project_id);
+CREATE INDEX IF NOT EXISTS idx_jobs_dead_letter_job_id ON jobs_dead_letter(job_id);
+CREATE INDEX IF NOT EXISTS idx_jobs_dead_letter_user_id ON jobs_dead_letter(user_id);
+"""
+
+SQLITE_CREATE_JOB_AUDIT_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_job_audit_actor_user_id ON job_audit_logs(actor_user_id);
+CREATE INDEX IF NOT EXISTS idx_job_audit_target_job_id ON job_audit_logs(target_job_id);
 """
 
 # SQLite migration definitions
@@ -282,6 +369,31 @@ SQLITE_MIGRATIONS: dict[int, list[str]] = {
         SQLITE_CREATE_ANALYSES_TABLE,
         SQLITE_CREATE_PROJECT_ANALYSIS_TABLE,
         SQLITE_CREATE_INDEXES,
+    ],
+    2: [
+        SQLITE_CREATE_JOBS_TABLE,
+        SQLITE_CREATE_JOBS_INDEXES,
+    ],
+    3: [
+        "ALTER TABLE jobs ADD COLUMN last_error TEXT",
+        "ALTER TABLE jobs ADD COLUMN attempts INTEGER DEFAULT 0",
+        "ALTER TABLE jobs ADD COLUMN progress REAL DEFAULT 0.0",
+        "ALTER TABLE jobs ADD COLUMN current_step TEXT",
+        "ALTER TABLE jobs ADD COLUMN payload TEXT",
+        SQLITE_CREATE_JOBS_DEAD_LETTER_TABLE,
+        SQLITE_CREATE_JOBS_DEAD_LETTER_INDEXES,
+    ],
+    4: [
+        "ALTER TABLE jobs ADD COLUMN user_id TEXT",
+        "ALTER TABLE jobs_dead_letter ADD COLUMN user_id TEXT",
+        SQLITE_CREATE_JOB_AUDIT_TABLE,
+        SQLITE_CREATE_JOB_AUDIT_INDEXES,
+        SQLITE_CREATE_JOBS_INDEXES,
+        SQLITE_CREATE_JOBS_DEAD_LETTER_INDEXES,
+    ],
+    5: [
+        "ALTER TABLE projects ADD COLUMN user_id TEXT",
+        SQLITE_CREATE_PROJECT_INDEXES,
     ],
 }
 
@@ -299,6 +411,7 @@ CREATE TABLE IF NOT EXISTS schema_version (
 POSTGRESQL_CREATE_PROJECTS_TABLE = """
 CREATE TABLE IF NOT EXISTS projects (
     id UUID PRIMARY KEY,
+    user_id TEXT,
     title TEXT NOT NULL,
     description TEXT,
     genre TEXT,
@@ -402,6 +515,49 @@ CREATE TABLE IF NOT EXISTS project_analyses (
 );
 """
 
+POSTGRESQL_CREATE_JOBS_TABLE = """
+CREATE TABLE IF NOT EXISTS jobs (
+    id TEXT PRIMARY KEY,
+    project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
+    user_id TEXT,
+    status TEXT NOT NULL,
+    description TEXT,
+    error TEXT,
+    last_error TEXT,
+    attempts INTEGER DEFAULT 0,
+    progress DOUBLE PRECISION DEFAULT 0.0,
+    current_step TEXT,
+    payload TEXT,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+POSTGRESQL_CREATE_JOBS_DEAD_LETTER_TABLE = """
+CREATE TABLE IF NOT EXISTS jobs_dead_letter (
+    id TEXT PRIMARY KEY,
+    job_id TEXT NOT NULL,
+    project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
+    user_id TEXT,
+    status TEXT NOT NULL,
+    description TEXT,
+    error TEXT,
+    payload TEXT,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+POSTGRESQL_CREATE_JOB_AUDIT_TABLE = """
+CREATE TABLE IF NOT EXISTS job_audit_logs (
+    id TEXT PRIMARY KEY,
+    actor_user_id TEXT NOT NULL,
+    action TEXT NOT NULL,
+    target_job_id TEXT,
+    metadata TEXT,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
 POSTGRESQL_CREATE_INDEXES = """
 CREATE INDEX IF NOT EXISTS idx_scripts_project_id ON scripts(project_id);
 CREATE INDEX IF NOT EXISTS idx_scenes_project_id ON scenes(project_id);
@@ -410,6 +566,26 @@ CREATE INDEX IF NOT EXISTS idx_shot_lists_project_id ON shot_lists(project_id);
 CREATE INDEX IF NOT EXISTS idx_storyboards_project_id ON storyboards(project_id);
 CREATE INDEX IF NOT EXISTS idx_analyses_project_id ON analyses(project_id);
 CREATE INDEX IF NOT EXISTS idx_project_analyses_project_id ON project_analyses(project_id);
+"""
+
+POSTGRESQL_CREATE_PROJECT_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_projects_user_id ON projects(user_id);
+"""
+
+POSTGRESQL_CREATE_JOBS_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_jobs_project_id ON jobs(project_id);
+CREATE INDEX IF NOT EXISTS idx_jobs_user_id ON jobs(user_id);
+"""
+
+POSTGRESQL_CREATE_JOBS_DEAD_LETTER_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_jobs_dead_letter_project_id ON jobs_dead_letter(project_id);
+CREATE INDEX IF NOT EXISTS idx_jobs_dead_letter_job_id ON jobs_dead_letter(job_id);
+CREATE INDEX IF NOT EXISTS idx_jobs_dead_letter_user_id ON jobs_dead_letter(user_id);
+"""
+
+POSTGRESQL_CREATE_JOB_AUDIT_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_job_audit_actor_user_id ON job_audit_logs(actor_user_id);
+CREATE INDEX IF NOT EXISTS idx_job_audit_target_job_id ON job_audit_logs(target_job_id);
 """
 
 # PostgreSQL migration definitions
@@ -424,6 +600,31 @@ POSTGRESQL_MIGRATIONS: dict[int, list[str]] = {
         POSTGRESQL_CREATE_ANALYSES_TABLE,
         POSTGRESQL_CREATE_PROJECT_ANALYSIS_TABLE,
         POSTGRESQL_CREATE_INDEXES,
+    ],
+    2: [
+        POSTGRESQL_CREATE_JOBS_TABLE,
+        POSTGRESQL_CREATE_JOBS_INDEXES,
+    ],
+    3: [
+        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS last_error TEXT",
+        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS attempts INTEGER DEFAULT 0",
+        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS progress DOUBLE PRECISION DEFAULT 0.0",
+        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS current_step TEXT",
+        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS payload TEXT",
+        POSTGRESQL_CREATE_JOBS_DEAD_LETTER_TABLE,
+        POSTGRESQL_CREATE_JOBS_DEAD_LETTER_INDEXES,
+    ],
+    4: [
+        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS user_id TEXT",
+        "ALTER TABLE jobs_dead_letter ADD COLUMN IF NOT EXISTS user_id TEXT",
+        POSTGRESQL_CREATE_JOB_AUDIT_TABLE,
+        POSTGRESQL_CREATE_JOB_AUDIT_INDEXES,
+        POSTGRESQL_CREATE_JOBS_INDEXES,
+        POSTGRESQL_CREATE_JOBS_DEAD_LETTER_INDEXES,
+    ],
+    5: [
+        "ALTER TABLE projects ADD COLUMN IF NOT EXISTS user_id TEXT",
+        POSTGRESQL_CREATE_PROJECT_INDEXES,
     ],
 }
 
@@ -573,7 +774,10 @@ class SQLiteDatabase(BaseDatabase):
         """
         ensure_db_directory(self._db_path)
 
-        async with aiosqlite.connect(self._db_path) as conn:
+        async with aiosqlite.connect(
+            self._db_path,
+            detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
+        ) as conn:
             # Enable foreign keys
             await conn.execute("PRAGMA foreign_keys = ON")
 
@@ -626,13 +830,29 @@ class SQLiteDatabase(BaseDatabase):
         if version not in SQLITE_MIGRATIONS:
             raise MigrationError(f"Unknown migration version: {version}")
 
+        async def _column_exists(table: str, column: str) -> bool:
+            cursor = await conn.execute(f"PRAGMA table_info({table})")
+            rows = await cursor.fetchall()
+            return any(row[1] == column for row in rows)
+
         try:
             for sql in SQLITE_MIGRATIONS[version]:
                 # Execute multi-statement SQL
                 for statement in sql.strip().split(";"):
                     statement = statement.strip()
-                    if statement:
-                        await conn.execute(statement)
+                    if not statement:
+                        continue
+
+                    if statement.upper().startswith("ALTER TABLE") and " ADD COLUMN " in statement.upper():
+                        parts = statement.split()
+                        # ALTER TABLE <table> ADD COLUMN <column>
+                        if len(parts) >= 6:
+                            table = parts[2]
+                            column = parts[5]
+                            if await _column_exists(table, column):
+                                continue
+
+                    await conn.execute(statement)
 
             # Record the migration
             await conn.execute(
@@ -659,7 +879,10 @@ class SQLiteDatabase(BaseDatabase):
         if not self._initialized:
             await self.initialize()
 
-        async with aiosqlite.connect(self._db_path) as conn:
+        async with aiosqlite.connect(
+            self._db_path,
+            detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
+        ) as conn:
             # Enable foreign keys
             await conn.execute("PRAGMA foreign_keys = ON")
             # Return rows as sqlite3.Row for dict-like access

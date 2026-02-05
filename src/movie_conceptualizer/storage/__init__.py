@@ -64,10 +64,14 @@ from movie_conceptualizer.storage.repositories import (
     # Base class
     BaseRepository,
     # Repositories
+    JobAuditLogRepository,
+    JobRepository,
     ProjectRepository,
     ScriptRepository,
     GenerationRepository,
     # Models
+    JobAuditLogModel,
+    JobModel,
     ProjectModel,
     ScriptModel,
     # Data schemas
@@ -108,10 +112,14 @@ __all__ = [
     # Repository Base
     "BaseRepository",
     # Repositories
+    "JobRepository",
+    "JobAuditLogRepository",
     "ProjectRepository",
     "ScriptRepository",
     "GenerationRepository",
     # Models
+    "JobModel",
+    "JobAuditLogModel",
     "ProjectModel",
     "ScriptModel",
     # Data Schemas

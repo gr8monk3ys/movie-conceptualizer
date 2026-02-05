@@ -31,6 +31,15 @@ class ExportFormat(StrEnum):
     PDF = "pdf"
 
 
+class JobStatus(StrEnum):
+    """Background job status."""
+
+    QUEUED = "queued"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
+
 # Project schemas
 class CreateProjectRequest(BaseModel):
     """Request schema for creating a new project."""
@@ -55,6 +64,7 @@ class ProjectResponse(BaseModel):
     has_script: bool = Field(False, description="Whether script has been uploaded")
     scene_count: int = Field(0, description="Number of parsed scenes")
     shot_count: int = Field(0, description="Number of generated shots")
+    user_id: str | None = Field(None, description="Owner user ID")
 
     model_config = {"from_attributes": True}
 
@@ -260,6 +270,62 @@ class GenerationStatusResponse(BaseModel):
     error_message: str | None = Field(None, description="Error message if failed")
     started_at: datetime | None = Field(None, description="Processing start time")
     completed_at: datetime | None = Field(None, description="Processing completion time")
+
+
+class GenerationJobResponse(BaseModel):
+    """Response schema for background generation job submission."""
+
+    job_id: str = Field(..., description="Job identifier")
+    status: JobStatus = Field(..., description="Job status")
+    project_id: str = Field(..., description="Project ID")
+    message: str | None = Field(None, description="Additional status message")
+
+
+class JobStatusResponse(BaseModel):
+    """Response schema for background job status."""
+
+    job_id: str = Field(..., description="Job identifier")
+    status: JobStatus = Field(..., description="Job status")
+    project_id: str | None = Field(None, description="Associated project ID")
+    user_id: str | None = Field(None, description="Owner user ID")
+    error: str | None = Field(None, description="Error message if failed")
+    last_error: str | None = Field(None, description="Most recent error message")
+    attempts: int = Field(0, description="Number of attempts")
+    progress: float = Field(0.0, description="Progress percentage")
+    current_step: str | None = Field(None, description="Current processing step")
+    created_at: datetime = Field(..., description="Job creation time")
+    updated_at: datetime = Field(..., description="Job last update time")
+    description: str | None = Field(None, description="Job description")
+
+
+class JobMetricsResponse(BaseModel):
+    """Response schema for job metrics."""
+
+    total: int = Field(..., description="Total jobs")
+    status_counts: dict[str, int] = Field(..., description="Counts by status")
+    success_rate: float = Field(..., description="Success rate (0-1)")
+    avg_attempts: float = Field(..., description="Average attempts per job")
+    avg_duration_seconds: float = Field(..., description="Average job duration in seconds")
+
+
+class JobListResponse(BaseModel):
+    """Response schema for job list."""
+
+    items: list[JobStatusResponse] = Field(..., description="Job items")
+    total: int = Field(..., description="Total jobs returned")
+
+
+class AssignProjectOwnerRequest(BaseModel):
+    """Request to assign a project owner."""
+
+    user_id: str = Field(..., description="User ID to assign")
+
+
+class BulkAssignProjectOwnerRequest(BaseModel):
+    """Request to bulk-assign project owners."""
+
+    user_id: str = Field(..., description="User ID to assign")
+    only_unassigned: bool = Field(True, description="Only assign projects without owners")
 
 
 # Export schemas

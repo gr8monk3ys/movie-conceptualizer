@@ -169,6 +169,7 @@ The platform uses LangGraph to orchestrate three specialized AI agents:
 | `MOVIECON_REQUIRE_AUTH` | `false` | Require authentication |
 | `MOVIECON_DEV_MODE` | `true` | Enable dev mode (creates test user) |
 | `MOVIECON_TOKEN_EXPIRE_MINUTES` | `30` | JWT token expiration |
+| `MOVIECON_INPROCESS_INLINE` | `false` | Run in-process jobs inline (useful for tests) |
 | **Rate Limiting** | | |
 | `MOVIECON_RATE_LIMIT_BACKEND` | `memory` | Backend (`memory` or `redis`) |
 | `MOVIECON_RATE_LIMIT` | `100/minute` | Default rate limit |
@@ -211,6 +212,7 @@ moviecon serve
 **Input:**
 - `.fountain` - Fountain screenplay format
 - `.txt` - Plain text with Fountain formatting
+- `.fdx` - Final Draft XML format (best-effort)
 
 **Output:**
 - JSON - Structured data for all outputs
@@ -250,6 +252,49 @@ export ANTHROPIC_API_KEY=your-api-key
 # Run with gunicorn
 gunicorn movie_conceptualizer.api.main:app -k uvicorn.workers.UvicornWorker -w 4
 ```
+
+### Background Jobs (Arq)
+
+```bash
+# Install job queue extras
+pip install movie-conceptualizer[jobs]
+
+# Configure job backend and Redis
+export MOVIECON_JOB_BACKEND=arq
+export MOVIECON_JOB_REDIS_URL=redis://redis:6379/0
+
+# Start Arq worker
+arq movie_conceptualizer.api.arq_tasks.WorkerSettings
+```
+
+Note:
+- Set `MOVIECON_INPROCESS_INLINE=true` to execute in-process jobs inline (helpful for tests or debugging).
+
+Job endpoints:
+- `GET /api/v1/jobs/{id}` - job status (includes progress, attempts)
+- `GET /api/v1/jobs` - list jobs (owner or admin)
+- `GET /api/v1/jobs?status=<status>` - filter jobs by status (`queued`, `running`, `succeeded`, `failed`)
+- `GET /api/v1/jobs/dead-letter` - list failed jobs
+- `POST /api/v1/jobs/dead-letter/replay` - replay dead-letter jobs (admin)
+- `POST /api/v1/jobs/{id}/retry` - re-enqueue failed job (arq backend only)
+- `GET /api/v1/jobs/metrics` - job metrics (admin)
+- `POST /api/v1/jobs/purge` - purge jobs (admin)
+- `GET /api/v1/jobs/audit` - audit log list (admin, supports `format=csv`)
+- `POST /api/v1/jobs/audit/purge` - purge audit logs (admin)
+
+Admin access:
+- Set `MOVIECON_ADMIN_USERS` to a comma-separated list of usernames to restrict admin endpoints.
+Audit logging:
+- Admin job actions are recorded in `job_audit_logs`.
+Audit CSV format:
+- `created_at` values are UTC ISO8601 timestamps with a `Z` suffix.
+
+Ownership:
+- Projects and jobs are associated with a `user_id`. Non-admin users can only access their own records.
+
+Project ownership helpers:
+- `POST /api/v1/projects/{id}/owner` - assign project owner (admin)
+- `POST /api/v1/projects/owner/bulk-assign` - bulk assign owner (admin)
 
 ## Roadmap
 

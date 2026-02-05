@@ -48,6 +48,10 @@ dev = [
 redis = [
     "redis>=5.0.0",
 ]
+jobs = [
+    "arq>=0.26.0",
+    "redis>=5.0.0",
+]
 postgresql = [
     "asyncpg>=0.29.0",
 ]

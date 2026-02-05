@@ -120,6 +120,43 @@ class TestProjectRepository:
         assert result is None
 
 
+class TestJobRepository:
+    """Tests for JobRepository."""
+
+    @pytest.fixture
+    async def db_and_repo(self):
+        """Create a temporary database and repository."""
+        from movie_conceptualizer.storage import Database, JobRepository
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = os.path.join(tmpdir, "test.db")
+            db = Database(db_path)
+            await db.initialize()
+            repo = JobRepository(db)
+            yield db, repo
+            await db.close()
+
+    @pytest.mark.asyncio
+    async def test_dead_letter_persists_user_id(self, db_and_repo):
+        """Dead-letter records persist user_id."""
+        _, repo = db_and_repo
+
+        await repo.create_dead_letter(
+            job_id="job-123",
+            project_id="project-xyz",
+            user_id="user-abc",
+            status="failed",
+            description="analysis",
+            error="boom",
+            payload="{}",
+        )
+
+        records = await repo.list_dead_letters(limit=1)
+        assert len(records) == 1
+        assert records[0]["job_id"] == "job-123"
+        assert records[0]["user_id"] == "user-abc"
+
+
 # Auth tests - simplified to avoid bcrypt backend issues
 class TestJWTTokens:
     """Tests for JWT token creation and validation."""
@@ -438,4 +475,3 @@ class TestHealthEndpointWithBackends:
         assert response.status_code == 200
         data = response.json()
         assert "redis" in data or "status" in data
-
