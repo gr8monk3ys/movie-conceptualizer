@@ -8,11 +8,16 @@ from movie_conceptualizer.parsers.fountain_parser import (
     FountainParser,
     parse_fountain,
 )
+from movie_conceptualizer.parsers.fdx_parser import (
+    FDXParseError,
+    parse_fdx,
+)
 from movie_conceptualizer.parsers.script_loader import (
     ScriptLoadError,
     UnsupportedFormatError,
     detect_format,
     get_script_summary,
+    load_fdx,
     load_fountain,
     load_script,
     load_text,
@@ -24,7 +29,9 @@ __all__ = [
     "FountainParser",
     # Convenience functions
     "parse_fountain",
+    "parse_fdx",
     "load_fountain",
+    "load_fdx",
     "load_text",
     "load_script",
     "detect_format",
@@ -33,4 +40,5 @@ __all__ = [
     # Exceptions
     "ScriptLoadError",
     "UnsupportedFormatError",
+    "FDXParseError",
 ]

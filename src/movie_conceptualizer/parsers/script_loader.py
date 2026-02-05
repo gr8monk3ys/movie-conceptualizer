@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 from movie_conceptualizer.models import SceneType, Script
 from movie_conceptualizer.parsers.fountain_parser import FountainParser
+from movie_conceptualizer.parsers.fdx_parser import parse_fdx
 
 if TYPE_CHECKING:
     pass
@@ -117,6 +118,29 @@ def load_text(text: str, title: str | None = None) -> Script:
     return script
 
 
+def load_fdx(path: str | Path) -> Script:
+    """Load a Final Draft (.fdx) screenplay from a file."""
+    path = Path(path)
+
+    if not path.exists():
+        raise FileNotFoundError(f"File not found: {path}")
+
+    if not path.is_file():
+        raise ScriptLoadError(f"Path is not a file: {path}")
+
+    try:
+        text = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        try:
+            text = path.read_text(encoding="latin-1")
+        except Exception as e:
+            raise ScriptLoadError(f"Failed to read file: {e}") from e
+
+    script = parse_fdx(text)
+    script.source_file = str(path.absolute())
+    return script
+
+
 def load_script(path: str | Path) -> Script:
     """Load a screenplay from file, auto-detecting format.
 
@@ -151,9 +175,12 @@ def load_script(path: str | Path) -> Script:
     if extension in fountain_extensions:
         return load_fountain(path)
 
+    if extension == ".fdx":
+        return load_fdx(path)
+
     raise UnsupportedFormatError(
         f"Unsupported file format: {extension}. "
-        f"Supported formats: {', '.join(sorted(fountain_extensions))}"
+        f"Supported formats: {', '.join(sorted(fountain_extensions | {'.fdx'}))}"
     )
 
 
