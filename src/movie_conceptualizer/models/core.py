@@ -7,7 +7,7 @@ for robust validation, serialization, and type safety.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import StrEnum
 from typing import Any
 from uuid import UUID, uuid4
@@ -742,7 +742,7 @@ class Project(BaseModel):
 
     def update_timestamp(self) -> None:
         """Update the updated_at timestamp to current time."""
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
 
 # Type alias for parsed script (for backwards compatibility)

@@ -12,7 +12,7 @@ awareness (180-degree rule, sight lines, etc.) rendered as SVG.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import StrEnum
 from uuid import UUID, uuid4
 
@@ -735,21 +735,21 @@ class BlockingDiagram(BaseModel):
     def add_character_position(self, position: CharacterPosition) -> None:
         """Add a character position."""
         self.character_positions.append(position)
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def add_camera_setup(self, camera: CameraSetup) -> None:
         """Add a camera setup."""
         self.camera_positions.append(camera)
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def add_movement(self, movement: Movement) -> None:
         """Add a movement path."""
         self.movements.append(movement)
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def update_timestamp(self) -> None:
         """Update the updated_at timestamp."""
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def to_svg(self) -> str:
         """Generate SVG representation of the blocking diagram.

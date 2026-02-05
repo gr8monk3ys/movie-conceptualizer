@@ -11,7 +11,7 @@ tracking and style guidelines for coherent visual storytelling.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import StrEnum
 from typing import Any
 from uuid import UUID, uuid4
@@ -409,14 +409,14 @@ class StoryboardFrame(BaseModel):
     def update_status(self, new_status: FrameStatus) -> None:
         """Update the frame status and timestamp."""
         self.status = new_status
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def approve(self, approver_id: UUID) -> None:
         """Mark the frame as approved."""
         self.status = FrameStatus.APPROVED
         self.approved_by = approver_id
-        self.approved_at = datetime.utcnow()
-        self.updated_at = datetime.utcnow()
+        self.approved_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(timezone.utc)
 
 
 class StyleGuidelines(BaseModel):
@@ -661,16 +661,16 @@ class Storyboard(BaseModel):
     def add_frame(self, frame: StoryboardFrame) -> None:
         """Add a frame to the storyboard."""
         self.frames.append(frame)
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def add_character_reference(self, reference: CharacterReference) -> None:
         """Add a character reference."""
         self.character_references.append(reference)
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def update_timestamp(self) -> None:
         """Update the updated_at timestamp."""
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
 
 # Type aliases
