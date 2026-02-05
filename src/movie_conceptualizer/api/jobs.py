@@ -11,6 +11,7 @@ from uuid import uuid4
 from pydantic import BaseModel, Field
 
 from movie_conceptualizer.api.schemas import JobStatus
+from movie_conceptualizer.api.logging_utils import request_id_var
 from movie_conceptualizer.storage import JobRepository
 
 class JobRecord(BaseModel):
@@ -85,6 +86,7 @@ class JobManager:
         job_id: str,
         coro_or_factory: Coroutine | Callable[[str], Coroutine],
     ) -> None:
+        token = request_id_var.set(job_id)
         coro = (
             coro_or_factory(job_id)
             if callable(coro_or_factory)
@@ -124,6 +126,7 @@ class JobManager:
                     )
             except Exception:
                 pass
+        request_id_var.reset(token)
 
     async def get(self, job_id: str) -> JobRecord | None:
         model = await self._repo.get(job_id)

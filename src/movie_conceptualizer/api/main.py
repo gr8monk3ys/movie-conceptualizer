@@ -2,12 +2,23 @@
 
 import os
 from datetime import datetime, timezone
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 
+import logging
+
+from movie_conceptualizer.api.logging_utils import (
+    RequestLogger,
+    configure_logging,
+    get_request_metrics,
+    now_ms,
+    request_id_var,
+)
+from movie_conceptualizer.api.arq_queue import get_queue_health
 from movie_conceptualizer.api.ratelimit import (
     DEFAULT_RATE_LIMIT,
     check_redis_health,
@@ -25,6 +36,8 @@ from movie_conceptualizer.api.routes import (
     projects_router,
     scripts_router,
 )
+from movie_conceptualizer.api.auth import ADMIN_POLICY, ADMIN_USERS, ALLOWED_ROLES
+from movie_conceptualizer.storage import JobRepository
 
 # Auth configuration
 REQUIRE_AUTH = os.environ.get("MOVIECON_REQUIRE_AUTH", "false").lower() in (
@@ -33,6 +46,22 @@ REQUIRE_AUTH = os.environ.get("MOVIECON_REQUIRE_AUTH", "false").lower() in (
     "yes",
 )
 DEV_MODE = os.environ.get("MOVIECON_DEV_MODE", "true").lower() in ("true", "1", "yes")
+ALLOW_DEV_FALLBACK = os.environ.get("MOVIECON_ALLOW_DEV_FALLBACK", "false").lower() in (
+    "true",
+    "1",
+    "yes",
+)
+STRICT_CONFIG = os.environ.get("MOVIECON_STRICT_CONFIG", "false").lower() in (
+    "true",
+    "1",
+    "yes",
+)
+JOB_BACKEND = os.environ.get("MOVIECON_JOB_BACKEND", "inprocess").lower()
+METRICS_ENABLED = os.environ.get("MOVIECON_METRICS_ENABLED", "true").lower() in (
+    "true",
+    "1",
+    "yes",
+)
 
 # API metadata
 API_TITLE = "Movie Conceptualizer API"
@@ -71,6 +100,15 @@ Rate limit headers are included in all responses:
 """
 API_VERSION = "0.1.0"
 
+# Configure logging early
+configure_logging()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await validate_config()
+    yield
+
+
 # Create FastAPI application
 app = FastAPI(
     title=API_TITLE,
@@ -79,6 +117,7 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
+    lifespan=lifespan,
     license_info={
         "name": "MIT",
         "url": "https://opensource.org/licenses/MIT",
@@ -118,6 +157,56 @@ app.include_router(generation_router, prefix="/api/v1")
 app.include_router(export_router, prefix="/api/v1")
 app.include_router(jobs_router, prefix="/api/v1")
 
+request_logger = RequestLogger(logging.getLogger(__name__))
+
+
+async def validate_config() -> None:
+    """Validate runtime configuration for production safety."""
+    issues: list[str] = []
+    if REQUIRE_AUTH and os.environ.get("MOVIECON_SECRET_KEY") is None:
+        issues.append("MOVIECON_SECRET_KEY is required when auth is enabled.")
+    if JOB_BACKEND == "arq":
+        if not (os.environ.get("MOVIECON_JOB_REDIS_URL") or os.environ.get("MOVIECON_REDIS_URL")):
+            issues.append("Arq backend requires MOVIECON_JOB_REDIS_URL or MOVIECON_REDIS_URL.")
+    if ALLOW_DEV_FALLBACK:
+        issues.append("MOVIECON_ALLOW_DEV_FALLBACK is enabled (dev-only).")
+    if REQUIRE_AUTH:
+        if ADMIN_POLICY not in ("env", "role"):
+            issues.append("MOVIECON_ADMIN_POLICY must be 'env' or 'role'.")
+        if ADMIN_POLICY == "env" and not ADMIN_USERS:
+            issues.append("MOVIECON_ADMIN_USERS must be set when admin policy is 'env'.")
+        if ADMIN_POLICY == "role" and "admin" not in ALLOWED_ROLES:
+            issues.append("MOVIECON_ALLOWED_ROLES must include 'admin' when admin policy is 'role'.")
+        if not ALLOWED_ROLES:
+            issues.append("MOVIECON_ALLOWED_ROLES must include at least one role.")
+
+    if issues and STRICT_CONFIG:
+        raise RuntimeError("Configuration errors: " + "; ".join(issues))
+    if issues:
+        logging.getLogger(__name__).warning("Configuration warnings: %s", "; ".join(issues))
+
+
+@app.middleware("http")
+async def add_request_logging(request: Request, call_next):
+    request_id = request.headers.get("X-Request-ID")
+    token = request_id_var.set(request_id)
+    start_ms = now_ms()
+    try:
+        response = await call_next(request)
+    finally:
+        duration_ms = now_ms() - start_ms
+        status_code = response.status_code if "response" in locals() else 500
+        request_logger.log_request(
+            request.method,
+            request.url.path,
+            status_code,
+            duration_ms,
+        )
+        request_id_var.reset(token)
+    if request_id and response:
+        response.headers["X-Request-ID"] = request_id
+    return response
+
 
 # Exception handlers
 @app.exception_handler(Exception)
@@ -155,11 +244,34 @@ async def root(request: Request) -> dict:
             "auth": "/api/v1/auth",
             "projects": "/api/v1/projects",
             "health": "/health",
+            "metrics": "/metrics" if METRICS_ENABLED else None,
         },
         "auth": {
             "required": REQUIRE_AUTH,
             "dev_mode": DEV_MODE,
         },
+    }
+
+
+@app.get(
+    "/metrics",
+    tags=["info"],
+    summary="Metrics endpoint",
+    description="Expose structured request and job metrics.",
+)
+@limiter.exempt
+async def metrics_endpoint():
+    if not METRICS_ENABLED:
+        return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content={"detail": "Metrics disabled"})
+
+    job_repo = JobRepository()
+    job_metrics = await job_repo.get_metrics()
+    request_metrics = get_request_metrics()
+
+    return {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "requests": request_metrics,
+        "jobs": job_metrics,
     }
 
 
@@ -178,6 +290,9 @@ async def health_check() -> dict:
         "version": API_VERSION,
         "rate_limiting": {
             "backend": get_backend_type(),
+        },
+        "jobs": {
+            "backend": JOB_BACKEND,
         },
     }
 
@@ -219,6 +334,28 @@ async def redis_health_check() -> dict:
             "default_limit": rate_limit_info["default_limit"],
             "generation_limit": rate_limit_info["generation_limit"],
         },
+    }
+
+
+@app.get(
+    "/health/jobs",
+    tags=["info"],
+    summary="Job Queue Health Check",
+    description="Check health of the background job backend.",
+)
+@limiter.exempt
+async def jobs_health_check() -> dict:
+    """Job backend health check endpoint."""
+    if JOB_BACKEND != "arq":
+        return {
+            "status": "not_configured",
+            "backend": JOB_BACKEND,
+        }
+    queue_health = await get_queue_health()
+    return {
+        "status": queue_health.get("status", "unknown"),
+        "backend": JOB_BACKEND,
+        "details": queue_health,
     }
 
 

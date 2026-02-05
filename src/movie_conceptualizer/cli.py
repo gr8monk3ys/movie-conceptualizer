@@ -1,6 +1,9 @@
 """Command-line interface for Movie Conceptualizer."""
 
+import asyncio
 import json
+import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 
 import typer
@@ -14,6 +17,8 @@ app = typer.Typer(
     help="AI-powered filmmaking platform: script → shot list → storyboard",
     add_completion=False,
 )
+db_app = typer.Typer(help="Database maintenance commands.")
+app.add_typer(db_app, name="db")
 console = Console()
 
 
@@ -71,6 +76,64 @@ def parse(
     if output:
         output.write_text(script.model_dump_json(indent=2))
         console.print(f"\n[green]✓[/green] Saved to {output}")
+
+
+@db_app.command("status")
+def db_status() -> None:
+    """Show current database schema version."""
+    from movie_conceptualizer.storage import create_database
+
+    async def _run() -> None:
+        db = create_database()
+        version = await db.get_schema_version()
+        console.print(f"[green]Schema version:[/green] {version}")
+        await db.close()
+
+    asyncio.run(_run())
+
+
+@db_app.command("migrate")
+def db_migrate() -> None:
+    """Run database migrations."""
+    from movie_conceptualizer.storage import init_database
+
+    async def _run() -> None:
+        db = await init_database()
+        version = await db.get_schema_version()
+        console.print(f"[green]Database migrated to version:[/green] {version}")
+        await db.close()
+
+    asyncio.run(_run())
+
+
+@db_app.command("backup")
+def db_backup(
+    output: Path | None = typer.Option(
+        None, "-o", "--output", help="Output path for SQLite backup file"
+    ),
+) -> None:
+    """Backup the SQLite database file."""
+    from movie_conceptualizer.storage.database import (
+        DatabaseBackend,
+        get_database_backend,
+        get_database_path,
+    )
+
+    backend = get_database_backend()
+    if backend != DatabaseBackend.SQLITE:
+        console.print("[red]Error:[/red] Backup is only supported for SQLite.")
+        raise typer.Exit(1)
+
+    db_path = get_database_path()
+    if not db_path.exists():
+        console.print(f"[red]Error:[/red] Database file not found: {db_path}")
+        raise typer.Exit(1)
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    backup_path = output or db_path.with_name(f"{db_path.stem}_backup_{timestamp}{db_path.suffix}")
+    backup_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(db_path, backup_path)
+    console.print(f"[green]Backup created:[/green] {backup_path}")
 
 
 @app.command()

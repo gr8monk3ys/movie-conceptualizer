@@ -99,3 +99,16 @@ async def enqueue_storyboard_job(
         aspect_ratio=aspect_ratio,
     )
     await redis.close()
+
+
+async def get_queue_health() -> dict:
+    """Check health of the job queue backend."""
+    try:
+        from arq import create_pool
+
+        redis = await create_pool(get_redis_settings())
+        await redis.ping()
+        await redis.close()
+        return {"status": "healthy"}
+    except Exception as exc:
+        return {"status": "unhealthy", "error": str(exc)}
