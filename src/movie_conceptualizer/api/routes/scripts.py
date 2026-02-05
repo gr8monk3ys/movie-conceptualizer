@@ -1,12 +1,17 @@
 """Script handling API routes."""
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
 
 from movie_conceptualizer.api.dependencies import (
-    MockWorkflow,
     ProjectStore,
+    UserInDB,
+    Workflow,
     get_project_store,
     get_workflow,
+    is_admin_user,
+    require_auth_if_enabled,
 )
 from movie_conceptualizer.api.ratelimit import DEFAULT_RATE_LIMIT, limiter
 from movie_conceptualizer.api.schemas import (
@@ -36,10 +41,12 @@ router = APIRouter(prefix="/projects/{project_id}", tags=["scripts"])
 @limiter.limit(DEFAULT_RATE_LIMIT)
 async def upload_script(
     request: Request,
+    response: Response,
     project_id: str,
     body: UploadScriptRequest,
     store: ProjectStore = Depends(get_project_store),
-    workflow: MockWorkflow = Depends(get_workflow),
+    workflow: Workflow = Depends(get_workflow),
+    current_user: Annotated[UserInDB | None, Depends(require_auth_if_enabled)] = None,
 ) -> ScriptResponse:
     """Upload a script to a project."""
     project = await store.get(project_id)
@@ -49,6 +56,12 @@ async def upload_script(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Project with ID '{project_id}' not found",
         )
+    if current_user and not is_admin_user(current_user):
+        if project.user_id is None or project.user_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to access this project",
+            )
 
     # Store the script content
     project.script_content = body.content
@@ -102,10 +115,12 @@ async def upload_script(
 @limiter.limit(DEFAULT_RATE_LIMIT)
 async def upload_script_file(
     request: Request,
+    response: Response,
     project_id: str,
     file: UploadFile = File(..., description="Script file to upload"),
     store: ProjectStore = Depends(get_project_store),
-    workflow: MockWorkflow = Depends(get_workflow),
+    workflow: Workflow = Depends(get_workflow),
+    current_user: Annotated[UserInDB | None, Depends(require_auth_if_enabled)] = None,
 ) -> ScriptResponse:
     """Upload a script file to a project."""
     project = await store.get(project_id)
@@ -115,6 +130,12 @@ async def upload_script_file(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Project with ID '{project_id}' not found",
         )
+    if current_user and not is_admin_user(current_user):
+        if project.user_id is None or project.user_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to access this project",
+            )
 
     # Validate file type
     allowed_extensions = {".txt", ".fountain", ".fdx"}
@@ -190,8 +211,10 @@ async def upload_script_file(
 @limiter.limit(DEFAULT_RATE_LIMIT)
 async def get_script(
     request: Request,
+    response: Response,
     project_id: str,
     store: ProjectStore = Depends(get_project_store),
+    current_user: Annotated[UserInDB | None, Depends(require_auth_if_enabled)] = None,
 ) -> ScriptResponse:
     """Get the parsed script for a project."""
     project = await store.get(project_id)
@@ -201,6 +224,12 @@ async def get_script(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Project with ID '{project_id}' not found",
         )
+    if current_user and not is_admin_user(current_user):
+        if project.user_id is None or project.user_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to access this project",
+            )
 
     if not project.has_script:
         raise HTTPException(
@@ -233,10 +262,12 @@ async def get_script(
 @limiter.limit(DEFAULT_RATE_LIMIT)
 async def parse_script(
     request: Request,
+    response: Response,
     project_id: str,
     body: ParseScriptRequest | None = None,
     store: ProjectStore = Depends(get_project_store),
-    workflow: MockWorkflow = Depends(get_workflow),
+    workflow: Workflow = Depends(get_workflow),
+    current_user: Annotated[UserInDB | None, Depends(require_auth_if_enabled)] = None,
 ) -> ScriptResponse:
     """Trigger script parsing."""
     project = await store.get(project_id)
@@ -246,6 +277,12 @@ async def parse_script(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Project with ID '{project_id}' not found",
         )
+    if current_user and not is_admin_user(current_user):
+        if project.user_id is None or project.user_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to access this project",
+            )
 
     if not project.has_script:
         raise HTTPException(

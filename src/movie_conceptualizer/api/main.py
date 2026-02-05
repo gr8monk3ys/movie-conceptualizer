@@ -1,7 +1,7 @@
 """FastAPI application for Movie Conceptualizer API."""
 
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,6 +21,7 @@ from movie_conceptualizer.api.routes import (
     auth_router,
     export_router,
     generation_router,
+    jobs_router,
     projects_router,
     scripts_router,
 )
@@ -92,10 +93,18 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
 # Configure CORS middleware
+cors_origins_env = os.environ.get("MOVIECON_CORS_ORIGINS", "").strip()
+if cors_origins_env:
+    cors_origins = [origin.strip() for origin in cors_origins_env.split(",") if origin.strip()]
+elif DEV_MODE:
+    cors_origins = ["*"]
+else:
+    cors_origins = []
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
-    allow_credentials=True,
+    allow_origins=cors_origins,
+    allow_credentials=cors_origins not in ([], ["*"]),
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -107,6 +116,7 @@ app.include_router(projects_router, prefix="/api/v1")
 app.include_router(scripts_router, prefix="/api/v1")
 app.include_router(generation_router, prefix="/api/v1")
 app.include_router(export_router, prefix="/api/v1")
+app.include_router(jobs_router, prefix="/api/v1")
 
 
 # Exception handlers
@@ -164,7 +174,7 @@ async def health_check() -> dict:
     """Health check endpoint."""
     health_response = {
         "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "version": API_VERSION,
         "rate_limiting": {
             "backend": get_backend_type(),
@@ -201,7 +211,7 @@ async def redis_health_check() -> dict:
     rate_limit_info = get_rate_limit_status()
 
     return {
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "redis": redis_health,
         "rate_limiting": {
             "configured_backend": rate_limit_info["configured_backend"],
@@ -259,6 +269,17 @@ async def api_v1_info(request: Request) -> dict:
                 "shotlist": "GET /api/v1/projects/{id}/export/shotlist",
                 "storyboard": "GET /api/v1/projects/{id}/export/storyboard",
                 "analysis": "GET /api/v1/projects/{id}/export/analysis",
+            },
+            "jobs": {
+                "get": "GET /api/v1/jobs/{id}",
+                "list": "GET /api/v1/jobs",
+                "dead_letter": "GET /api/v1/jobs/dead-letter",
+                "dead_letter_replay": "POST /api/v1/jobs/dead-letter/replay",
+                "retry": "POST /api/v1/jobs/{id}/retry",
+                "metrics": "GET /api/v1/jobs/metrics",
+                "purge": "POST /api/v1/jobs/purge",
+                "audit": "GET /api/v1/jobs/audit",
+                "audit_purge": "POST /api/v1/jobs/audit/purge",
             },
         },
     }

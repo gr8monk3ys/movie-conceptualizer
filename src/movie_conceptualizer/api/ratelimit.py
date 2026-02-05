@@ -40,26 +40,24 @@ def get_client_identifier(request: Request) -> str:
     """
     Get a unique identifier for the client making the request.
 
-    Uses the following priority:
-    1. X-Forwarded-For header (for clients behind proxies)
-    2. X-Real-IP header
-    3. Remote address from the connection
-
-    Args:
-        request: The incoming FastAPI request
-
-    Returns:
-        A string identifier for the client
+    Uses forwarded headers only when MOVIECON_TRUST_PROXY=true.
+    Otherwise, falls back to the direct remote address to avoid spoofing.
     """
-    # Check for forwarded headers (common in production behind load balancers)
-    forwarded_for = request.headers.get("X-Forwarded-For")
-    if forwarded_for:
-        # X-Forwarded-For can contain multiple IPs, take the first (client IP)
-        return forwarded_for.split(",")[0].strip()
+    trust_proxy = os.environ.get("MOVIECON_TRUST_PROXY", "false").lower() in (
+        "true",
+        "1",
+        "yes",
+    )
 
-    real_ip = request.headers.get("X-Real-IP")
-    if real_ip:
-        return real_ip.strip()
+    if trust_proxy:
+        forwarded_for = request.headers.get("X-Forwarded-For")
+        if forwarded_for:
+            # X-Forwarded-For can contain multiple IPs, take the first (client IP)
+            return forwarded_for.split(",")[0].strip()
+
+        real_ip = request.headers.get("X-Real-IP")
+        if real_ip:
+            return real_ip.strip()
 
     # Fall back to direct remote address
     return get_remote_address(request)

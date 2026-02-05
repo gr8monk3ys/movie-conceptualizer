@@ -1,10 +1,17 @@
 """Export API routes."""
 
-from datetime import datetime
+from datetime import datetime, timezone
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 
-from movie_conceptualizer.api.dependencies import ProjectStore, get_project_store
+from movie_conceptualizer.api.dependencies import (
+    ProjectStore,
+    UserInDB,
+    get_project_store,
+    is_admin_user,
+    require_auth_if_enabled,
+)
 from movie_conceptualizer.api.ratelimit import DEFAULT_RATE_LIMIT, limiter
 from movie_conceptualizer.api.schemas import (
     ErrorResponse,
@@ -29,11 +36,13 @@ router = APIRouter(prefix="/projects/{project_id}/export", tags=["export"])
 @limiter.limit(DEFAULT_RATE_LIMIT)
 async def export_shot_list(
     request: Request,
+    response: Response,
     project_id: str,
     format: ExportFormat = Query(ExportFormat.JSON, description="Export format"),
     include_notes: bool = Query(True, description="Include director notes"),
     include_timing: bool = Query(True, description="Include timing estimates"),
     store: ProjectStore = Depends(get_project_store),
+    current_user: Annotated[UserInDB | None, Depends(require_auth_if_enabled)] = None,
 ) -> ExportResponse:
     """Export the shot list for a project."""
     project = await store.get(project_id)
@@ -43,6 +52,12 @@ async def export_shot_list(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Project with ID '{project_id}' not found",
         )
+    if current_user and not is_admin_user(current_user):
+        if project.user_id is None or project.user_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to access this project",
+            )
 
     if not project.shots:
         raise HTTPException(
@@ -97,7 +112,7 @@ async def export_shot_list(
     # Generate filename
     safe_title = "".join(c if c.isalnum() or c in " -_" else "" for c in project.title)
     safe_title = safe_title.replace(" ", "_")[:50]
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     filename = f"{safe_title}_shotlist_{timestamp}.{format.value}"
 
     if format == ExportFormat.PDF:
@@ -110,7 +125,7 @@ async def export_shot_list(
                 "message": "PDF export not yet implemented in MVP",
                 "json_data": export_data,
             },
-            generated_at=datetime.utcnow(),
+            generated_at=datetime.now(timezone.utc),
         )
 
     return ExportResponse(
@@ -118,7 +133,7 @@ async def export_shot_list(
         format=format,
         filename=filename,
         data=export_data,
-        generated_at=datetime.utcnow(),
+        generated_at=datetime.now(timezone.utc),
     )
 
 
@@ -136,10 +151,12 @@ async def export_shot_list(
 @limiter.limit(DEFAULT_RATE_LIMIT)
 async def export_storyboard(
     request: Request,
+    response: Response,
     project_id: str,
     format: ExportFormat = Query(ExportFormat.JSON, description="Export format"),
     include_prompts: bool = Query(True, description="Include generation prompts"),
     store: ProjectStore = Depends(get_project_store),
+    current_user: Annotated[UserInDB | None, Depends(require_auth_if_enabled)] = None,
 ) -> ExportResponse:
     """Export storyboard data for a project."""
     project = await store.get(project_id)
@@ -149,6 +166,12 @@ async def export_storyboard(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Project with ID '{project_id}' not found",
         )
+    if current_user and not is_admin_user(current_user):
+        if project.user_id is None or project.user_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to access this project",
+            )
 
     if not project.storyboard_prompts:
         raise HTTPException(
@@ -197,7 +220,7 @@ async def export_storyboard(
     # Generate filename
     safe_title = "".join(c if c.isalnum() or c in " -_" else "" for c in project.title)
     safe_title = safe_title.replace(" ", "_")[:50]
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     filename = f"{safe_title}_storyboard_{timestamp}.{format.value}"
 
     if format == ExportFormat.PDF:
@@ -210,7 +233,7 @@ async def export_storyboard(
                 "message": "PDF export not yet implemented in MVP",
                 "json_data": export_data,
             },
-            generated_at=datetime.utcnow(),
+            generated_at=datetime.now(timezone.utc),
         )
 
     return ExportResponse(
@@ -218,7 +241,7 @@ async def export_storyboard(
         format=format,
         filename=filename,
         data=export_data,
-        generated_at=datetime.utcnow(),
+        generated_at=datetime.now(timezone.utc),
     )
 
 
@@ -236,9 +259,11 @@ async def export_storyboard(
 @limiter.limit(DEFAULT_RATE_LIMIT)
 async def export_analysis(
     request: Request,
+    response: Response,
     project_id: str,
     format: ExportFormat = Query(ExportFormat.JSON, description="Export format"),
     store: ProjectStore = Depends(get_project_store),
+    current_user: Annotated[UserInDB | None, Depends(require_auth_if_enabled)] = None,
 ) -> ExportResponse:
     """Export analysis data for a project."""
     project = await store.get(project_id)
@@ -248,6 +273,12 @@ async def export_analysis(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Project with ID '{project_id}' not found",
         )
+    if current_user and not is_admin_user(current_user):
+        if project.user_id is None or project.user_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to access this project",
+            )
 
     if not project.analyses:
         raise HTTPException(
@@ -289,7 +320,7 @@ async def export_analysis(
     # Generate filename
     safe_title = "".join(c if c.isalnum() or c in " -_" else "" for c in project.title)
     safe_title = safe_title.replace(" ", "_")[:50]
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     filename = f"{safe_title}_analysis_{timestamp}.{format.value}"
 
     if format == ExportFormat.PDF:
@@ -301,7 +332,7 @@ async def export_analysis(
                 "message": "PDF export not yet implemented in MVP",
                 "json_data": export_data,
             },
-            generated_at=datetime.utcnow(),
+            generated_at=datetime.now(timezone.utc),
         )
 
     return ExportResponse(
@@ -309,5 +340,5 @@ async def export_analysis(
         format=format,
         filename=filename,
         data=export_data,
-        generated_at=datetime.utcnow(),
+        generated_at=datetime.now(timezone.utc),
     )
