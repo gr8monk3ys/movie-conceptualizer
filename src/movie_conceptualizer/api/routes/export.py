@@ -68,24 +68,32 @@ async def export_shot_list(
     # Build export data
     shots_data = []
     for shot in project.shots:
+        shot_type_value = (
+            shot.shot_type.value if hasattr(shot.shot_type, "value") else shot.shot_type
+        )
+        camera_movement_value = (
+            shot.camera_movement.value
+            if hasattr(shot.camera_movement, "value")
+            else shot.camera_movement
+        )
         shot_dict = {
             "shot_number": shot.shot_number,
             "scene_number": shot.scene_number,
-            "shot_type": shot.shot_type.value,
-            "camera_movement": shot.camera_movement.value,
+            "shot_type": shot_type_value,
+            "camera_movement": camera_movement_value,
             "description": shot.description,
-            "characters": shot.characters,
-            "action": shot.action,
-            "dialogue": shot.dialogue,
-            "framing_notes": shot.framing_notes,
-            "lens_suggestion": shot.lens_suggestion,
+            "characters": getattr(shot, "characters", []),
+            "action": getattr(shot, "action", None),
+            "dialogue": getattr(shot, "dialogue", None),
+            "framing_notes": getattr(shot, "framing_notes", None),
+            "lens_suggestion": getattr(shot, "lens_suggestion", None),
         }
 
         if include_timing:
             shot_dict["duration_seconds"] = shot.duration_seconds
 
         if include_notes:
-            shot_dict["notes"] = shot.notes
+            shot_dict["notes"] = getattr(shot, "notes", None)
 
         shots_data.append(shot_dict)
 

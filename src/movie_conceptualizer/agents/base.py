@@ -25,8 +25,9 @@ class APIKeyNotFoundError(Exception):
 
     def __init__(self, provider: str = "Anthropic"):
         self.provider = provider
+        env_var = "OPENAI_API_KEY" if provider.lower() == "openai" else "ANTHROPIC_API_KEY"
         super().__init__(
-            f"No {provider} API key found. Please set the ANTHROPIC_API_KEY "
+            f"No {provider} API key found. Please set the {env_var} "
             "environment variable or pass api_key to the agent constructor."
         )
 
@@ -46,38 +47,54 @@ class BaseAgent(ABC):
 
     def __init__(
         self,
-        model_name: str = "claude-sonnet-4-20250514",
+        model_name: str | None = None,
         temperature: float = 0.7,
         max_tokens: int = 4096,
         api_key: str | None = None,
+        provider: str | None = None,
     ):
         """Initialize the base agent.
 
         Args:
-            model_name: The Claude model to use (default: claude-sonnet-4-20250514)
+            model_name: The model to use (default depends on provider)
             temperature: Sampling temperature (0.0 to 1.0)
             max_tokens: Maximum tokens in response
-            api_key: Anthropic API key (defaults to ANTHROPIC_API_KEY env var)
+            api_key: Provider API key (defaults to env)
+            provider: LLM provider name ("anthropic" or "openai")
 
         Note:
             The LLM is initialized lazily on first access to the `llm` property.
             This allows creating agent instances without immediately requiring
             an API key (useful for testing, configuration, etc.).
         """
-        self.model_name = model_name
+        env_provider = os.environ.get("MOVIECON_LLM_PROVIDER")
+        self.provider = (provider or env_provider or "anthropic").lower()
+        self.model_name = model_name or self._default_model_name()
         self.temperature = temperature
         self.max_tokens = max_tokens
         self._api_key = api_key
         self._llm: BaseChatModel | None = None
 
+    def _default_model_name(self) -> str:
+        """Select a default model name based on provider and env overrides."""
+        env_model = os.environ.get("MOVIECON_LLM_MODEL")
+        if env_model:
+            return env_model
+        if self.provider == "openai":
+            return os.environ.get("MOVIECON_OPENAI_MODEL", "gpt-4o-mini")
+        return os.environ.get("MOVIECON_ANTHROPIC_MODEL", "claude-sonnet-4-20250514")
+
     def _get_api_key(self) -> str:
         """Get the API key, checking environment if not explicitly set."""
         if self._api_key:
             return self._api_key
-        env_key = os.environ.get("ANTHROPIC_API_KEY")
+        if self.provider == "openai":
+            env_key = os.environ.get("OPENAI_API_KEY")
+        else:
+            env_key = os.environ.get("ANTHROPIC_API_KEY")
         if env_key:
             return env_key
-        raise APIKeyNotFoundError("Anthropic")
+        raise APIKeyNotFoundError("OpenAI" if self.provider == "openai" else "Anthropic")
 
     def _init_llm(self) -> BaseChatModel:
         """Initialize the LLM instance.
@@ -88,9 +105,18 @@ class BaseAgent(ABC):
         Raises:
             APIKeyNotFoundError: If no API key is available
         """
+        api_key = self._get_api_key()
+        if self.provider == "openai":
+            from langchain_openai import ChatOpenAI
+
+            return ChatOpenAI(
+                model=self.model_name,
+                temperature=self.temperature,
+                max_tokens=self.max_tokens,
+                api_key=api_key,
+            )
         from langchain_anthropic import ChatAnthropic
 
-        api_key = self._get_api_key()
         return ChatAnthropic(
             model=self.model_name,
             temperature=self.temperature,
@@ -182,7 +208,7 @@ class BaseAgent(ABC):
             ValueError: If the LLM fails to generate valid structured output
         """
         # Create a structured LLM that outputs the specified schema
-        structured_llm = self._llm.with_structured_output(output_schema)
+        structured_llm = self.llm.with_structured_output(output_schema)
 
         # Build messages
         messages = [
@@ -221,7 +247,7 @@ class BaseAgent(ABC):
             ValueError: If the LLM fails to generate valid structured output
         """
         # Create a structured LLM that outputs the specified schema
-        structured_llm = self._llm.with_structured_output(output_schema)
+        structured_llm = self.llm.with_structured_output(output_schema)
 
         # Build messages
         messages = [
@@ -255,7 +281,7 @@ class BaseAgent(ABC):
             HumanMessage(content=user_prompt.format(**kwargs) if kwargs else user_prompt),
         ]
 
-        response = self._llm.invoke(messages)
+        response = self.llm.invoke(messages)
         return response.content
 
     async def agenerate_text(self, user_prompt: str, **kwargs: Any) -> str:
@@ -273,7 +299,7 @@ class BaseAgent(ABC):
             HumanMessage(content=user_prompt.format(**kwargs) if kwargs else user_prompt),
         ]
 
-        response = await self._llm.ainvoke(messages)
+        response = await self.llm.ainvoke(messages)
         return response.content
 
     @abstractmethod

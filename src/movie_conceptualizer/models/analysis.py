@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 # ============================================================================
 # Enums for structured data
@@ -31,6 +31,31 @@ class EmotionalTone(StrEnum):
     JOYFUL = "joyful"
     SOMBER = "somber"
     NEUTRAL = "neutral"
+
+
+def _coerce_emotional_tone(value: object) -> EmotionalTone:
+    """Coerce unknown tone strings to a safe default."""
+    if isinstance(value, EmotionalTone):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if not normalized:
+            return EmotionalTone.NEUTRAL
+        synonyms = {
+            "sad": "somber",
+            "somber": "somber",
+            "melancholy": "melancholic",
+            "moody": "melancholic",
+            "eerie": "mysterious",
+            "ominous": "mysterious",
+            "scary": "terrifying",
+            "fearful": "terrifying",
+            "formal": "neutral",
+        }
+        normalized = synonyms.get(normalized, normalized)
+        if normalized in {tone.value for tone in EmotionalTone}:
+            return EmotionalTone(normalized)
+    return EmotionalTone.NEUTRAL
 
 
 class PacingType(StrEnum):
@@ -78,6 +103,28 @@ class CameraMovement(StrEnum):
     ARC = "arc"
 
 
+def _coerce_camera_movement(value: object) -> CameraMovement:
+    """Coerce unknown camera movement strings to a safe default."""
+    if isinstance(value, CameraMovement):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if not normalized:
+            return CameraMovement.STATIC
+        synonyms = {
+            "slow_push_in": "push_in",
+            "slow_pull_out": "pull_out",
+            "push-in": "push_in",
+            "pull-out": "pull_out",
+            "handheld_cam": "handheld",
+            "steadycam": "steadicam",
+        }
+        normalized = synonyms.get(normalized, normalized)
+        if normalized in {mv.value for mv in CameraMovement}:
+            return CameraMovement(normalized)
+    return CameraMovement.STATIC
+
+
 class CameraAngle(StrEnum):
     """Camera angle types."""
 
@@ -120,6 +167,11 @@ class EmotionalBeat(BaseModel):
         default=None,
         description="Approximate location in scene (e.g., 'opening', 'midpoint')",
     )
+
+    @field_validator("tone", mode="before")
+    @classmethod
+    def _normalize_tone(cls, value: object) -> EmotionalTone:
+        return _coerce_emotional_tone(value)
 
 
 class DramaticMoment(BaseModel):
@@ -186,6 +238,11 @@ class AnalyzedScene(BaseModel):
     is_action_heavy: bool = Field(description="Whether scene is primarily action")
     character_count: int = Field(description="Number of characters in scene")
 
+    @field_validator("overall_tone", mode="before")
+    @classmethod
+    def _normalize_overall_tone(cls, value: object) -> EmotionalTone:
+        return _coerce_emotional_tone(value)
+
 
 class AnalyzedScript(BaseModel):
     """Complete analyzed script with all scene analyses."""
@@ -201,6 +258,11 @@ class AnalyzedScript(BaseModel):
     genre_hints: list[str] = Field(
         default_factory=list, description="Detected genre elements"
     )
+
+    @field_validator("overall_tone", mode="before")
+    @classmethod
+    def _normalize_script_tone(cls, value: object) -> EmotionalTone:
+        return _coerce_emotional_tone(value)
 
 
 # ============================================================================
@@ -228,6 +290,11 @@ class Shot(BaseModel):
         default=None, description="Action this shot covers, if any"
     )
     emotional_purpose: str = Field(description="What emotion/purpose this shot serves")
+
+    @field_validator("camera_movement", mode="before")
+    @classmethod
+    def _normalize_camera_movement(cls, value: object) -> CameraMovement:
+        return _coerce_camera_movement(value)
     lighting_notes: str | None = Field(
         default=None, description="Specific lighting notes for this shot"
     )

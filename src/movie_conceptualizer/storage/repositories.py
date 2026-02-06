@@ -18,7 +18,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Any, TypeVar
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from movie_conceptualizer.storage.database import (
     BaseDatabase,
@@ -100,13 +100,34 @@ class ShotData(BaseModel):
 class StoryboardPrompt(BaseModel):
     """Schema for storyboard prompt data."""
 
-    shot_id: str = Field(...)
+    shot_id: str | None = Field(default=None)
     scene_number: int = Field(...)
     shot_number: str = Field(...)
-    image_prompt: str = Field(...)
+    image_prompt: str | None = Field(default=None)
+    prompt: str | None = Field(default=None)
+    negative_prompt: str | None = Field(default=None)
     composition_notes: str | None = Field(default=None)
     lighting_notes: str | None = Field(default=None)
     style_reference: str | None = Field(default=None)
+    aspect_ratio: str | None = Field(default=None)
+
+    model_config = {"extra": "allow"}
+
+    @field_validator("image_prompt", mode="before")
+    @classmethod
+    def _normalize_image_prompt(cls, value: object, info) -> str | None:
+        if value:
+            return str(value)
+        prompt = info.data.get("prompt") if hasattr(info, "data") else None
+        return str(prompt) if prompt else None
+
+    @field_validator("shot_id", mode="before")
+    @classmethod
+    def _normalize_shot_id(cls, value: object, info) -> str | None:
+        if value:
+            return str(value)
+        shot_number = info.data.get("shot_number") if hasattr(info, "data") else None
+        return str(shot_number) if shot_number else None
 
 
 class RepositoryError(Exception):
