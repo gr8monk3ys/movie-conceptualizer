@@ -99,7 +99,7 @@ __all__ = [
 
 logger = logging.getLogger(__name__)
 
-DEV_MODE = os.environ.get("MOVIECON_DEV_MODE", "true").lower() in ("true", "1", "yes")
+DEV_MODE = os.environ.get("MOVIECON_DEV_MODE", "false").lower() in ("true", "1", "yes")
 
 
 @runtime_checkable
@@ -860,7 +860,7 @@ class RealWorkflow:
     async def parse_script(
         self, content: str, format: str = "fountain"
     ) -> tuple[list[SceneData], str | None, str | None]:
-        if format not in ("fountain", "plaintext", "txt", "fdx"):
+        if format not in ("fountain", "plaintext", "txt", "fdx", "pdf"):
             raise ValueError(f"Unsupported script format: {format}")
 
         if format == "fdx":

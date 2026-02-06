@@ -45,7 +45,7 @@ REQUIRE_AUTH = os.environ.get("MOVIECON_REQUIRE_AUTH", "false").lower() in (
     "1",
     "yes",
 )
-DEV_MODE = os.environ.get("MOVIECON_DEV_MODE", "true").lower() in ("true", "1", "yes")
+DEV_MODE = os.environ.get("MOVIECON_DEV_MODE", "false").lower() in ("true", "1", "yes")
 ALLOW_DEV_FALLBACK = os.environ.get("MOVIECON_ALLOW_DEV_FALLBACK", "false").lower() in (
     "true",
     "1",
@@ -165,6 +165,10 @@ async def validate_config() -> None:
     issues: list[str] = []
     if REQUIRE_AUTH and os.environ.get("MOVIECON_SECRET_KEY") is None:
         issues.append("MOVIECON_SECRET_KEY is required when auth is enabled.")
+    if not DEV_MODE and not REQUIRE_AUTH:
+        issues.append("Authentication is disabled while MOVIECON_DEV_MODE is false.")
+    if not DEV_MODE and get_backend_type() == "memory":
+        issues.append("Rate limiting is using memory backend while MOVIECON_DEV_MODE is false.")
     if JOB_BACKEND == "arq":
         if not (os.environ.get("MOVIECON_JOB_REDIS_URL") or os.environ.get("MOVIECON_REDIS_URL")):
             issues.append("Arq backend requires MOVIECON_JOB_REDIS_URL or MOVIECON_REDIS_URL.")
