@@ -169,6 +169,12 @@ The platform uses LangGraph to orchestrate three specialized AI agents:
 | `MOVIECON_ANTHROPIC_MODEL` | `claude-sonnet-4-20250514` | Default Anthropic model |
 | `ANTHROPIC_API_KEY` | - | Claude API key (required for Anthropic) |
 | `OPENAI_API_KEY` | - | OpenAI API key (required for OpenAI) |
+| `OPENAI_IMAGE_MODEL` | `gpt-image-1` | OpenAI image model for pre-vis generation |
+| `OPENAI_IMAGE_SIZE` | `1536x1024` | Image size for pre-vis generation |
+| `OPENAI_IMAGE_QUALITY` | `high` | Image quality (low, medium, high, auto) |
+| `OPENAI_IMAGE_BACKGROUND` | `opaque` | Image background (opaque or transparent) |
+| `OPENAI_IMAGE_OUTPUT_FORMAT` | `png` | Output format for generated images |
+| `OPENAI_IMAGE_OUTPUT_COMPRESSION` | `0` | JPEG/WebP compression (0-100) |
 | **Database** | | |
 | `MOVIECON_DB_BACKEND` | `sqlite` | Database backend (`sqlite` or `postgresql`) |
 | `MOVIECON_DB_PATH` | `~/.movie-conceptualizer/data.db` | SQLite database path |
@@ -218,6 +224,23 @@ The platform uses LangGraph to orchestrate three specialized AI agents:
 | `MOVIECON_LOG_FORMAT` | `json` | Log format (`json` or `text`) |
 | **Uploads** | | |
 | `MOVIECON_MAX_UPLOAD_MB` | `25` | Max upload size (MB) |
+
+### Pre-Vis Image Generation
+
+Generate pre-vis frames from the storyboard prompt pack using the OpenAI Images API:
+
+```bash
+python3 scripts/generate_previs_images.py \
+  --prompts output/previs_prompts.json \
+  --out-dir output/previs_frames \
+  --manifest output/previs_manifest.json
+```
+
+If you want to limit the number of frames during tests:
+
+```bash
+python3 scripts/generate_previs_images.py --limit 5 --dry-run
+```
 | `MOVIECON_AV_SCAN` | - | Antivirus scan mode (`clamav`) |
 
 ### Database Configuration
