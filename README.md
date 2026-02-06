@@ -36,6 +36,9 @@ pip install -e ".[redis]"
 
 # All extras (dev + postgresql + redis)
 pip install -e ".[dev,postgresql,redis]"
+
+# PDF OCR extras (requires system deps: tesseract + poppler)
+pip install -e ".[pdf]"
 ```
 
 ## Quick Start
@@ -46,7 +49,7 @@ pip install -e ".[dev,postgresql,redis]"
 # Parse a screenplay
 moviecon parse examples/sample_screenplay.fountain
 
-# Analyze with AI (requires ANTHROPIC_API_KEY)
+# Analyze with AI (requires ANTHROPIC_API_KEY or OPENAI_API_KEY)
 moviecon analyze examples/sample_screenplay.fountain -o analysis.json
 
 # Generate shot list
@@ -105,6 +108,8 @@ API endpoints:
 - `POST /api/v1/auth/logout` - Revoke refresh token
 - `POST /api/v1/projects` - Create project
 - `POST /api/v1/projects/{id}/script` - Upload script
+- `POST /api/v1/projects/{id}/script/upload` - Upload script file
+- `POST /api/v1/projects/{id}/script/upload/async` - Upload script file (async)
 - `POST /api/v1/projects/{id}/generate` - Run full pipeline
 - `GET /api/v1/projects/{id}/export/shotlist` - Export shot list
 - `GET /health` - Health check with backend status
@@ -158,8 +163,12 @@ The platform uses LangGraph to orchestrate three specialized AI agents:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | **AI** | | |
-| `ANTHROPIC_API_KEY` | - | Claude API key (required for AI features) |
-| `OPENAI_API_KEY` | - | OpenAI API key (optional) |
+| `MOVIECON_LLM_PROVIDER` | `anthropic` | LLM provider (`anthropic` or `openai`) |
+| `MOVIECON_LLM_MODEL` | - | Override model name for selected provider |
+| `MOVIECON_OPENAI_MODEL` | `gpt-4o-mini` | Default OpenAI model (if provider is `openai`) |
+| `MOVIECON_ANTHROPIC_MODEL` | `claude-sonnet-4-20250514` | Default Anthropic model |
+| `ANTHROPIC_API_KEY` | - | Claude API key (required for Anthropic) |
+| `OPENAI_API_KEY` | - | OpenAI API key (required for OpenAI) |
 | **Database** | | |
 | `MOVIECON_DB_BACKEND` | `sqlite` | Database backend (`sqlite` or `postgresql`) |
 | `MOVIECON_DB_PATH` | `~/.movie-conceptualizer/data.db` | SQLite database path |
@@ -169,7 +178,7 @@ The platform uses LangGraph to orchestrate three specialized AI agents:
 | **Authentication** | | |
 | `MOVIECON_SECRET_KEY` | (random) | JWT signing key |
 | `MOVIECON_REQUIRE_AUTH` | `false` | Require authentication |
-| `MOVIECON_DEV_MODE` | `true` | Enable dev mode behaviors |
+| `MOVIECON_DEV_MODE` | `false` | Enable dev mode behaviors |
 | `MOVIECON_ALLOW_DEV_FALLBACK` | `false` | Enable dev login/plaintext fallback (dev only) |
 | `MOVIECON_TOKEN_EXPIRE_MINUTES` | `60` | JWT token expiration |
 | `MOVIECON_ADMIN_POLICY` | `role` | Admin policy (`env` or `role`) |
@@ -198,9 +207,18 @@ The platform uses LangGraph to orchestrate three specialized AI agents:
 | `MOVIECON_RATE_LIMIT_AUTH` | `10/minute` | Auth endpoint limit |
 | `MOVIECON_REDIS_URL` | `redis://localhost:6379/0` | Redis connection URL |
 | `MOVIECON_REDIS_PREFIX` | `moviecon:ratelimit:` | Redis key prefix |
+| **PDF OCR** | | |
+| `MOVIECON_PDF_OCR` | `auto` | OCR mode (`auto`, `always`, `never`) |
+| `MOVIECON_PDF_OCR_DPI` | `200` | OCR rendering DPI |
+| `MOVIECON_PDF_OCR_MAX_PAGES` | - | Limit OCR pages for large PDFs |
+| `MOVIECON_PDF_SCENE_CHUNK` | `3` | Paragraphs per synthetic scene when no headings found |
+| `MOVIECON_PDF_PREPROCESS` | `true` | Enable OCR text preprocessing |
 | **Logging** | | |
 | `MOVIECON_LOG_LEVEL` | `INFO` | Log level |
 | `MOVIECON_LOG_FORMAT` | `json` | Log format (`json` or `text`) |
+| **Uploads** | | |
+| `MOVIECON_MAX_UPLOAD_MB` | `25` | Max upload size (MB) |
+| `MOVIECON_AV_SCAN` | - | Antivirus scan mode (`clamav`) |
 
 ### Database Configuration
 
@@ -238,6 +256,7 @@ moviecon serve
 - `.fountain` - Fountain screenplay format
 - `.txt` - Plain text with Fountain formatting
 - `.fdx` - Final Draft XML format (best-effort)
+- `.pdf` - PDF (best-effort text extraction, OCR fallback)
 
 **Output:**
 - JSON - Structured data for all outputs
