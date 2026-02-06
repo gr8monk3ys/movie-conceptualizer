@@ -81,7 +81,9 @@ class UploadScriptRequest(BaseModel):
     """Request schema for uploading a script."""
 
     content: str = Field(..., min_length=1, description="Script content as text")
-    format: str = Field("fountain", description="Script format (fountain, plaintext)")
+    format: str = Field(
+        "fountain", description="Script format (fountain, plaintext, fdx, pdf)"
+    )
 
 
 class SceneData(BaseModel):
