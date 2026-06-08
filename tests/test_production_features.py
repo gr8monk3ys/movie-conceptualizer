@@ -3,7 +3,6 @@
 import os
 import tempfile
 from datetime import timedelta
-from pathlib import Path
 
 import pytest
 
@@ -24,9 +23,7 @@ class TestDatabaseSetup:
 
             # Check tables exist
             async with db.connection() as conn:
-                cursor = await conn.execute(
-                    "SELECT name FROM sqlite_master WHERE type='table'"
-                )
+                cursor = await conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
                 tables = {row[0] for row in await cursor.fetchall()}
 
             assert "projects" in tables

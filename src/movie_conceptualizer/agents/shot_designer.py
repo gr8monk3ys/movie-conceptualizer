@@ -31,9 +31,7 @@ class ShotListOutput(BaseModel):
     master_shot_id: str | None = Field(
         default=None, description="ID of the master/establishing shot"
     )
-    estimated_screen_time: str | None = Field(
-        default=None, description="Estimated screen time"
-    )
+    estimated_screen_time: str | None = Field(default=None, description="Estimated screen time")
 
 
 class ShotDesignerAgent(BaseAgent):
@@ -142,8 +140,7 @@ Create professional, shootable shot lists that a film crew could execute."""
         )
 
         characters_text = "\n".join(
-            f"  - {char.name}: {char.physical_description}"
-            for char in scene.character_descriptions
+            f"  - {char.name}: {char.physical_description}" for char in scene.character_descriptions
         )
 
         return f"""SCENE {scene.scene_number}: {scene.scene_heading}
@@ -220,13 +217,14 @@ CHARACTERS IN SCENE:
             )
         elif scene.is_action_heavy:
             guidance_parts.append(
-                "ACTION SCENE: Multiple angles on key actions, "
-                "wide for geography, tight for impact"
+                "ACTION SCENE: Multiple angles on key actions, wide for geography, tight for impact"
             )
 
         # Character count guidance
         if scene.character_count == 1:
-            guidance_parts.append("SINGLE CHARACTER: POV opportunities, reaction shots to environment")
+            guidance_parts.append(
+                "SINGLE CHARACTER: POV opportunities, reaction shots to environment"
+            )
         elif scene.character_count == 2:
             guidance_parts.append(
                 "TWO CHARACTERS: Two-shot master, OTS coverage, singles for emphasis"
@@ -333,9 +331,7 @@ Be thorough - include all shots needed to edit the scene effectively."""
             estimated_screen_time=result.estimated_screen_time,
         )
 
-    def design_shot_lists_for_script(
-        self, analyzed_script: AnalyzedScript
-    ) -> list[ShotList]:
+    def design_shot_lists_for_script(self, analyzed_script: AnalyzedScript) -> list[ShotList]:
         """Design shot lists for all scenes in an analyzed script.
 
         Args:
@@ -363,10 +359,7 @@ Be thorough - include all shots needed to edit the scene effectively."""
         """
         import asyncio
 
-        tasks = [
-            self.adesign_shot_list(scene)
-            for scene in analyzed_script.analyzed_scenes
-        ]
+        tasks = [self.adesign_shot_list(scene) for scene in analyzed_script.analyzed_scenes]
         return list(await asyncio.gather(*tasks))
 
     def process(

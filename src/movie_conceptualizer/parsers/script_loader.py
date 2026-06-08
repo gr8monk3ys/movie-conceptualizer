@@ -10,14 +10,11 @@ import io
 import os
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import Any
 
 from movie_conceptualizer.models import SceneType, Script
-from movie_conceptualizer.parsers.fountain_parser import FountainParser
 from movie_conceptualizer.parsers.fdx_parser import parse_fdx
-
-if TYPE_CHECKING:
-    pass
+from movie_conceptualizer.parsers.fountain_parser import FountainParser
 
 
 class ScriptLoadError(Exception):
@@ -174,15 +171,11 @@ def _extract_pdf_text_ocr(data: bytes) -> str:
     try:
         from pdf2image import convert_from_bytes
     except ImportError as exc:
-        raise ScriptLoadError(
-            "PDF OCR requires 'pdf2image'. Install it to enable OCR."
-        ) from exc
+        raise ScriptLoadError("PDF OCR requires 'pdf2image'. Install it to enable OCR.") from exc
     try:
         import pytesseract
     except ImportError as exc:
-        raise ScriptLoadError(
-            "PDF OCR requires 'pytesseract'. Install it to enable OCR."
-        ) from exc
+        raise ScriptLoadError("PDF OCR requires 'pytesseract'. Install it to enable OCR.") from exc
 
     dpi = int(os.environ.get("MOVIECON_PDF_OCR_DPI", "200"))
     max_pages_env = os.environ.get("MOVIECON_PDF_OCR_MAX_PAGES")
@@ -337,7 +330,7 @@ def coerce_pdf_text_to_fountain(text: str) -> str:
     # Try to detect sluglines without INT/EXT
     slug_scenes = _split_by_sluglines(text)
     if slug_scenes:
-        scenes = []
+        scenes: list[str] = []
         for heading, body in slug_scenes:
             scenes.append(f"INT. {heading}\n\n{body}\n")
         return "\n".join(scenes)
@@ -350,7 +343,7 @@ def coerce_pdf_text_to_fountain(text: str) -> str:
     chunk_size = int(os.environ.get("MOVIECON_PDF_SCENE_CHUNK", "3"))
     chunk_size = max(1, min(chunk_size, 10))
 
-    scenes: list[str] = []
+    scenes = []
     scene_num = 1
     for i in range(0, len(paragraphs), chunk_size):
         chunk = "\n\n".join(paragraphs[i : i + chunk_size])
@@ -409,7 +402,7 @@ def _normalize_scene_headings(text: str) -> str:
 def _split_by_sluglines(text: str) -> list[tuple[str, str]]:
     """Split text into scenes using heuristic sluglines."""
     time_tokens = ("DAY", "NIGHT", "MORNING", "EVENING", "DUSK", "DAWN", "LATER", "CONTINUOUS")
-    lines = [l.rstrip() for l in text.splitlines()]
+    lines = [line.rstrip() for line in text.splitlines()]
     scenes: list[tuple[str, str]] = []
     current_heading: str | None = None
     current_body: list[str] = []
@@ -510,10 +503,7 @@ def detect_format(text: str) -> str:
     # Look for scene headings
     for line in lines[:50]:  # Check first 50 lines
         stripped = line.strip().upper()
-        if any(
-            stripped.startswith(prefix)
-            for prefix in ("INT.", "EXT.", "INT/EXT.", "I/E.")
-        ):
+        if any(stripped.startswith(prefix) for prefix in ("INT.", "EXT.", "INT/EXT.", "I/E.")):
             return "fountain"
 
     # Check for character cues (all caps followed by dialogue)
@@ -576,13 +566,10 @@ def validate_script(script: Script) -> list[str]:
 
     # Check for scenes without locations
     scenes_without_location = [
-        s for s in script.scenes
-        if not s.location or s.location.strip() == ""
+        s for s in script.scenes if not s.location or s.location.strip() == ""
     ]
     if scenes_without_location:
-        warnings.append(
-            f"{len(scenes_without_location)} scene(s) missing location information"
-        )
+        warnings.append(f"{len(scenes_without_location)} scene(s) missing location information")
 
     # Check for empty scenes
     empty_scenes = [s for s in script.scenes if not s.content]
@@ -592,7 +579,7 @@ def validate_script(script: Script) -> list[str]:
     return warnings
 
 
-def get_script_summary(script: Script) -> dict:
+def get_script_summary(script: Script) -> dict[str, Any]:
     """Generate a summary of the parsed script.
 
     Args:
@@ -629,11 +616,13 @@ def get_script_summary(script: Script) -> dict:
 
     # Count interior vs exterior scenes
     int_scenes = sum(
-        1 for s in script.scenes
+        1
+        for s in script.scenes
         if s.scene_type in (SceneType.INTERIOR, SceneType.INTERIOR_EXTERIOR)
     )
     ext_scenes = sum(
-        1 for s in script.scenes
+        1
+        for s in script.scenes
         if s.scene_type in (SceneType.EXTERIOR, SceneType.INTERIOR_EXTERIOR)
     )
 

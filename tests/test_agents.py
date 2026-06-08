@@ -8,7 +8,6 @@ import pytest
 
 from movie_conceptualizer.agents import (
     APIKeyNotFoundError,
-    BaseAgent,
     ScriptAnalyzerAgent,
     ShotDesignerAgent,
     StoryboardArtistAgent,
@@ -84,7 +83,9 @@ class TestAgentSystemPrompts:
         """Storyboard artist has a system prompt."""
         agent = StoryboardArtistAgent()
         assert agent.system_prompt
-        assert "storyboard" in agent.system_prompt.lower() or "visual" in agent.system_prompt.lower()
+        assert (
+            "storyboard" in agent.system_prompt.lower() or "visual" in agent.system_prompt.lower()
+        )
 
 
 class TestAgentNames:
@@ -148,7 +149,7 @@ class TestWorkflowIntegration:
 
     def test_create_initial_state(self):
         """Can create initial pipeline state."""
-        from movie_conceptualizer.workflows import PipelineConfig, create_initial_state
+        from movie_conceptualizer.workflows import create_initial_state
 
         script = load_script("examples/sample_screenplay.fountain")
         state = create_initial_state(script)

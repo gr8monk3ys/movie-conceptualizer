@@ -12,7 +12,7 @@ awareness (180-degree rule, sight lines, etc.) rendered as SVG.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import StrEnum
 from uuid import UUID, uuid4
 
@@ -93,28 +93,18 @@ class Coordinate(BaseModel):
     with (0,0) at the top-left corner.
     """
 
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "x": 50.0,
-                "y": 30.0
-            }
-        }
-    )
+    model_config = ConfigDict(json_schema_extra={"example": {"x": 50.0, "y": 30.0}})
 
     x: float = Field(..., ge=0, le=100, description="X coordinate (0-100)")
     y: float = Field(..., ge=0, le=100, description="Y coordinate (0-100)")
 
     def distance_to(self, other: Coordinate) -> float:
         """Calculate distance to another coordinate."""
-        return ((self.x - other.x) ** 2 + (self.y - other.y) ** 2) ** 0.5
+        return float(((self.x - other.x) ** 2 + (self.y - other.y) ** 2) ** 0.5)
 
     def midpoint(self, other: Coordinate) -> Coordinate:
         """Calculate midpoint between this and another coordinate."""
-        return Coordinate(
-            x=(self.x + other.x) / 2,
-            y=(self.y + other.y) / 2
-        )
+        return Coordinate(x=(self.x + other.x) / 2, y=(self.y + other.y) / 2)
 
 
 class CharacterPosition(BaseModel):
@@ -133,7 +123,7 @@ class CharacterPosition(BaseModel):
                 "x": 30.0,
                 "y": 50.0,
                 "facing_direction": "east",
-                "action": "Standing, arms crossed"
+                "action": "Standing, arms crossed",
             }
         }
     )
@@ -144,43 +134,31 @@ class CharacterPosition(BaseModel):
     x: float = Field(..., ge=0, le=100, description="X position (0-100)")
     y: float = Field(..., ge=0, le=100, description="Y position (0-100)")
     facing_direction: FacingDirection = Field(
-        default=FacingDirection.CAMERA,
-        description="Direction the character is facing"
+        default=FacingDirection.CAMERA, description="Direction the character is facing"
     )
     action: str | None = Field(
-        default=None, max_length=500,
-        description="What the character is doing"
+        default=None, max_length=500, description="What the character is doing"
     )
 
     # Optional stage position reference
     stage_position: StagePosition | None = Field(
-        default=None,
-        description="Traditional stage position name"
+        default=None, description="Traditional stage position name"
     )
 
     # Visual customization
-    color: str = Field(
-        default="#3498db",
-        description="Color for the character marker"
-    )
+    color: str = Field(default="#3498db", description="Color for the character marker")
     label: str | None = Field(
-        default=None, max_length=50,
-        description="Short label for the diagram"
+        default=None, max_length=50, description="Short label for the diagram"
     )
     icon: str | None = Field(
-        default=None, max_length=50,
-        description="Icon identifier for the character"
+        default=None, max_length=50, description="Icon identifier for the character"
     )
 
     # Timing
     beat_number: int | None = Field(
-        default=None, ge=1,
-        description="Beat number when this position occurs"
+        default=None, ge=1, description="Beat number when this position occurs"
     )
-    time_code: str | None = Field(
-        default=None, max_length=20,
-        description="Timecode reference"
-    )
+    time_code: str | None = Field(default=None, max_length=20, description="Timecode reference")
 
     @field_validator("character_name")
     @classmethod
@@ -193,10 +171,11 @@ class CharacterPosition(BaseModel):
     def validate_color(cls, v: str) -> str:
         """Validate hex color format."""
         import re
+
         v = v.strip()
-        if not v.startswith('#'):
-            v = f'#{v}'
-        hex_pattern = re.compile(r'^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$')
+        if not v.startswith("#"):
+            v = f"#{v}"
+        hex_pattern = re.compile(r"^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$")
         if not hex_pattern.match(v):
             raise ValueError(f"Invalid hex color: {v}")
         return v.lower()
@@ -230,7 +209,7 @@ class CameraSetup(BaseModel):
                 "target_x": 50.0,
                 "target_y": 30.0,
                 "lens_mm": 50,
-                "shot_type": "medium"
+                "shot_type": "medium",
             }
         }
     )
@@ -242,75 +221,50 @@ class CameraSetup(BaseModel):
     position_x: float = Field(..., ge=0, le=100, description="Camera X position")
     position_y: float = Field(..., ge=0, le=100, description="Camera Y position")
     height: float | None = Field(
-        default=None, ge=0, le=50,
-        description="Camera height in feet (0=ground level)"
+        default=None, ge=0, le=50, description="Camera height in feet (0=ground level)"
     )
 
     # Target/framing
     target_x: float = Field(..., ge=0, le=100, description="Target X position")
     target_y: float = Field(..., ge=0, le=100, description="Target Y position")
     target_character_id: UUID | None = Field(
-        default=None,
-        description="ID of character being framed"
+        default=None, description="ID of character being framed"
     )
 
     # Lens configuration
-    lens_mm: int = Field(
-        default=50, ge=8, le=800,
-        description="Lens focal length in mm"
-    )
-    aperture: str | None = Field(
-        default=None, max_length=20,
-        description="Aperture setting"
-    )
-    aspect_ratio: str = Field(
-        default="16:9",
-        description="Frame aspect ratio"
-    )
+    lens_mm: int = Field(default=50, ge=8, le=800, description="Lens focal length in mm")
+    aperture: str | None = Field(default=None, max_length=20, description="Aperture setting")
+    aspect_ratio: str = Field(default="16:9", description="Frame aspect ratio")
 
     # Shot information
     shot_type: str | None = Field(
-        default=None, max_length=50,
-        description="Shot type (wide, medium, close-up)"
+        default=None, max_length=50, description="Shot type (wide, medium, close-up)"
     )
-    shot_id: UUID | None = Field(
-        default=None,
-        description="ID of associated shot"
-    )
+    shot_id: UUID | None = Field(default=None, description="ID of associated shot")
     shot_number: str | None = Field(
-        default=None, max_length=20,
-        description="Shot number reference"
+        default=None, max_length=20, description="Shot number reference"
     )
 
     # Visual customization
-    color: str = Field(
-        default="#e74c3c",
-        description="Color for the camera marker"
-    )
-    show_fov: bool = Field(
-        default=True,
-        description="Whether to show field of view cone"
-    )
+    color: str = Field(default="#e74c3c", description="Color for the camera marker")
+    show_fov: bool = Field(default=True, description="Whether to show field of view cone")
     fov_angle: float | None = Field(
-        default=None, ge=1, le=180,
-        description="Field of view angle in degrees"
+        default=None, ge=1, le=180, description="Field of view angle in degrees"
     )
 
     # Notes
-    notes: str | None = Field(
-        default=None, max_length=500,
-        description="Camera setup notes"
-    )
+    notes: str | None = Field(default=None, max_length=500, description="Camera setup notes")
 
     @field_validator("color")
     @classmethod
     def validate_color(cls, v: str) -> str:
         """Validate hex color format."""
         import re
+
         v = v.strip()
-        if not v.startswith('#'):
-            v = f'#{v}'
-        hex_pattern = re.compile(r'^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$')
+        if not v.startswith("#"):
+            v = f"#{v}"
+        hex_pattern = re.compile(r"^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$")
         if not hex_pattern.match(v):
             raise ValueError(f"Invalid hex color: {v}")
         return v.lower()
@@ -340,6 +294,7 @@ class CameraSetup(BaseModel):
         # FOV = 2 * arctan(sensor_width / (2 * focal_length))
         # For 35mm: sensor_width = 36mm
         import math
+
         return 2 * math.degrees(math.atan(36 / (2 * self.lens_mm)))
 
     def get_lens_description(self) -> str:
@@ -370,7 +325,7 @@ class Movement(BaseModel):
                 "entity_name": "SARAH",
                 "movement_type": "cross",
                 "path": [{"x": 30.0, "y": 50.0}, {"x": 70.0, "y": 50.0}],
-                "timing": "2 seconds"
+                "timing": "2 seconds",
             }
         }
     )
@@ -378,61 +333,33 @@ class Movement(BaseModel):
     id: UUID = Field(default_factory=uuid4, description="Unique identifier")
     entity_id: UUID = Field(..., description="ID of the moving entity")
     entity_type: EntityType = Field(..., description="Type of entity moving")
-    entity_name: str | None = Field(
-        default=None, max_length=100,
-        description="Name of the entity"
-    )
+    entity_name: str | None = Field(default=None, max_length=100, description="Name of the entity")
 
     # Movement details
-    movement_type: MovementType = Field(
-        default=MovementType.WALK,
-        description="Type of movement"
-    )
+    movement_type: MovementType = Field(default=MovementType.WALK, description="Type of movement")
     path: list[Coordinate] = Field(
-        ..., min_length=2,
-        description="Path coordinates from start to end"
+        ..., min_length=2, description="Path coordinates from start to end"
     )
-    timing: str | None = Field(
-        default=None, max_length=100,
-        description="Timing description"
-    )
+    timing: str | None = Field(default=None, max_length=100, description="Timing description")
     duration_seconds: float | None = Field(
-        default=None, ge=0.1, le=120,
-        description="Duration in seconds"
+        default=None, ge=0.1, le=120, description="Duration in seconds"
     )
 
     # Beat/timing reference
     start_beat: int | None = Field(
-        default=None, ge=1,
-        description="Beat number when movement starts"
+        default=None, ge=1, description="Beat number when movement starts"
     )
-    end_beat: int | None = Field(
-        default=None, ge=1,
-        description="Beat number when movement ends"
-    )
+    end_beat: int | None = Field(default=None, ge=1, description="Beat number when movement ends")
 
     # Visual customization
-    color: str = Field(
-        default="#2ecc71",
-        description="Color for the movement line"
-    )
-    line_style: str = Field(
-        default="dashed",
-        description="Line style: solid, dashed, dotted"
-    )
-    arrow_style: str = Field(
-        default="end",
-        description="Arrow placement: none, start, end, both"
-    )
+    color: str = Field(default="#2ecc71", description="Color for the movement line")
+    line_style: str = Field(default="dashed", description="Line style: solid, dashed, dotted")
+    arrow_style: str = Field(default="end", description="Arrow placement: none, start, end, both")
 
     # Notes
-    notes: str | None = Field(
-        default=None, max_length=500,
-        description="Movement notes"
-    )
+    notes: str | None = Field(default=None, max_length=500, description="Movement notes")
     dialogue_during: str | None = Field(
-        default=None, max_length=500,
-        description="Dialogue spoken during movement"
+        default=None, max_length=500, description="Dialogue spoken during movement"
     )
 
     @field_validator("entity_name")
@@ -466,10 +393,11 @@ class Movement(BaseModel):
     def validate_color(cls, v: str) -> str:
         """Validate hex color format."""
         import re
+
         v = v.strip()
-        if not v.startswith('#'):
-            v = f'#{v}'
-        hex_pattern = re.compile(r'^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$')
+        if not v.startswith("#"):
+            v = f"#{v}"
+        hex_pattern = re.compile(r"^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$")
         if not hex_pattern.match(v):
             raise ValueError(f"Invalid hex color: {v}")
         return v.lower()
@@ -516,15 +444,14 @@ class FloorPlanElement(BaseModel):
                 "x": 60.0,
                 "y": 40.0,
                 "width": 15.0,
-                "height": 8.0
+                "height": 8.0,
             }
         }
     )
 
     id: UUID = Field(default_factory=uuid4, description="Unique identifier")
     element_type: str = Field(
-        ..., max_length=50,
-        description="Type of element (wall, door, furniture, prop)"
+        ..., max_length=50, description="Type of element (wall, door, furniture, prop)"
     )
     name: str = Field(..., max_length=100, description="Element name")
     x: float = Field(..., ge=0, le=100, description="X position")
@@ -552,7 +479,7 @@ class BlockingDiagram(BaseModel):
                 "title": "Scene 1 Blocking",
                 "character_positions": [],
                 "camera_positions": [],
-                "movements": []
+                "movements": [],
             }
         }
     )
@@ -560,43 +487,30 @@ class BlockingDiagram(BaseModel):
     id: UUID = Field(default_factory=uuid4, description="Unique identifier")
     scene_id: UUID = Field(..., description="ID of the scene")
     scene_number: int | None = Field(default=None, ge=1, description="Scene number")
-    title: str = Field(
-        default="Blocking Diagram",
-        max_length=200,
-        description="Diagram title"
-    )
+    title: str = Field(default="Blocking Diagram", max_length=200, description="Diagram title")
     description: str | None = Field(
-        default=None, max_length=1000,
-        description="Diagram description"
+        default=None, max_length=1000, description="Diagram description"
     )
 
     # Floor plan
     floor_plan_svg: str | None = Field(
-        default=None,
-        description="SVG content for the floor plan background"
+        default=None, description="SVG content for the floor plan background"
     )
     floor_plan_url: str | None = Field(
-        default=None, max_length=2000,
-        description="URL to floor plan image"
+        default=None, max_length=2000, description="URL to floor plan image"
     )
     floor_plan_elements: list[FloorPlanElement] = Field(
-        default_factory=list,
-        description="Static floor plan elements"
+        default_factory=list, description="Static floor plan elements"
     )
 
     # Positions and movements
     character_positions: list[CharacterPosition] = Field(
-        default_factory=list,
-        description="All character positions"
+        default_factory=list, description="All character positions"
     )
     camera_positions: list[CameraSetup] = Field(
-        default_factory=list,
-        description="All camera setups"
+        default_factory=list, description="All camera setups"
     )
-    movements: list[Movement] = Field(
-        default_factory=list,
-        description="All movement paths"
-    )
+    movements: list[Movement] = Field(default_factory=list, description="All movement paths")
 
     # Diagram settings
     width: int = Field(default=800, ge=100, le=4000, description="Diagram width in pixels")
@@ -604,26 +518,21 @@ class BlockingDiagram(BaseModel):
     grid_visible: bool = Field(default=True, description="Whether to show grid")
     grid_size: int = Field(default=10, ge=5, le=50, description="Grid cell size")
     scale: str | None = Field(
-        default=None, max_length=50,
-        description="Scale reference (e.g., '1 unit = 1 foot')"
+        default=None, max_length=50, description="Scale reference (e.g., '1 unit = 1 foot')"
     )
 
     # Film grammar metadata
     axis_line_visible: bool = Field(
-        default=True,
-        description="Whether to show 180-degree rule axis"
+        default=True, description="Whether to show 180-degree rule axis"
     )
     axis_line_start: Coordinate | None = Field(
-        default=None,
-        description="Start of 180-degree axis line"
+        default=None, description="Start of 180-degree axis line"
     )
     axis_line_end: Coordinate | None = Field(
-        default=None,
-        description="End of 180-degree axis line"
+        default=None, description="End of 180-degree axis line"
     )
     sight_lines_visible: bool = Field(
-        default=True,
-        description="Whether to show character sight lines"
+        default=True, description="Whether to show character sight lines"
     )
 
     # Beat/timing
@@ -631,31 +540,19 @@ class BlockingDiagram(BaseModel):
     total_beats: int = Field(default=1, ge=1, description="Total number of beats")
 
     # Timestamps
-    created_at: datetime = Field(
-        default_factory=datetime.utcnow,
-        description="Creation timestamp"
-    )
+    created_at: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")
     updated_at: datetime = Field(
-        default_factory=datetime.utcnow,
-        description="Last update timestamp"
+        default_factory=datetime.utcnow, description="Last update timestamp"
     )
 
     # AI metadata
-    ai_generated: bool = Field(
-        default=False,
-        description="Whether AI generated this diagram"
-    )
-    ai_model: str | None = Field(
-        default=None, max_length=100,
-        description="AI model used"
-    )
+    ai_generated: bool = Field(default=False, description="Whether AI generated this diagram")
+    ai_model: str | None = Field(default=None, max_length=100, description="AI model used")
     film_grammar_compliant: bool | None = Field(
-        default=None,
-        description="Whether diagram follows film grammar rules"
+        default=None, description="Whether diagram follows film grammar rules"
     )
     film_grammar_notes: str | None = Field(
-        default=None, max_length=1000,
-        description="Film grammar compliance notes"
+        default=None, max_length=1000, description="Film grammar compliance notes"
     )
 
     @computed_field
@@ -714,42 +611,45 @@ class BlockingDiagram(BaseModel):
     def get_movements_for_character(self, character_id: UUID) -> list[Movement]:
         """Get all movements for a specific character."""
         return [
-            m for m in self.movements
+            m
+            for m in self.movements
             if m.entity_id == character_id and m.entity_type == EntityType.CHARACTER
         ]
 
     def get_movements_for_beat(self, beat_number: int) -> list[Movement]:
         """Get all movements occurring during a specific beat."""
         return [
-            m for m in self.movements
+            m
+            for m in self.movements
             if m.start_beat and m.end_beat and m.start_beat <= beat_number <= m.end_beat
         ]
 
     def get_positions_for_beat(self, beat_number: int) -> list[CharacterPosition]:
         """Get character positions at a specific beat."""
         return [
-            pos for pos in self.character_positions
+            pos
+            for pos in self.character_positions
             if pos.beat_number is None or pos.beat_number == beat_number
         ]
 
     def add_character_position(self, position: CharacterPosition) -> None:
         """Add a character position."""
         self.character_positions.append(position)
-        self.updated_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(UTC)
 
     def add_camera_setup(self, camera: CameraSetup) -> None:
         """Add a camera setup."""
         self.camera_positions.append(camera)
-        self.updated_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(UTC)
 
     def add_movement(self, movement: Movement) -> None:
         """Add a movement path."""
         self.movements.append(movement)
-        self.updated_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(UTC)
 
     def update_timestamp(self) -> None:
         """Update the updated_at timestamp."""
-        self.updated_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(UTC)
 
     def to_svg(self) -> str:
         """Generate SVG representation of the blocking diagram.
@@ -759,12 +659,12 @@ class BlockingDiagram(BaseModel):
         """
         svg_parts = [
             f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {self.width} {self.height}">',
-            '<style>',
-            '  .character { fill-opacity: 0.8; }',
-            '  .camera { fill-opacity: 0.8; }',
-            '  .movement { stroke-dasharray: 5,5; fill: none; }',
-            '  .label { font-family: Arial, sans-serif; font-size: 12px; }',
-            '</style>',
+            "<style>",
+            "  .character { fill-opacity: 0.8; }",
+            "  .camera { fill-opacity: 0.8; }",
+            "  .movement { stroke-dasharray: 5,5; fill: none; }",
+            "  .label { font-family: Arial, sans-serif; font-size: 12px; }",
+            "</style>",
         ]
 
         # Background
@@ -777,7 +677,7 @@ class BlockingDiagram(BaseModel):
                 svg_parts.append(f'<line x1="{x}" y1="0" x2="{x}" y2="{self.height}"/>')
             for y in range(0, self.height + 1, self.grid_size * self.height // 100):
                 svg_parts.append(f'<line x1="0" y1="{y}" x2="{self.width}" y2="{y}"/>')
-            svg_parts.append('</g>')
+            svg_parts.append("</g>")
 
         # Floor plan elements
         for elem in self.floor_plan_elements:
@@ -786,7 +686,7 @@ class BlockingDiagram(BaseModel):
             ew = elem.width * self.width / 100
             eh = elem.height * self.height / 100
             svg_parts.append(
-                f'<rect x="{ex - ew/2}" y="{ey - eh/2}" width="{ew}" height="{eh}" '
+                f'<rect x="{ex - ew / 2}" y="{ey - eh / 2}" width="{ew}" height="{eh}" '
                 f'fill="{elem.color}" stroke="#333" stroke-width="1" '
                 f'transform="rotate({elem.rotation} {ex} {ey})"/>'
             )
@@ -829,8 +729,8 @@ class BlockingDiagram(BaseModel):
                 f'<text x="{px}" y="{py + 5}" class="label" text-anchor="middle" fill="white">{pos.display_label}</text>'
             )
 
-        svg_parts.append('</svg>')
-        return '\n'.join(svg_parts)
+        svg_parts.append("</svg>")
+        return "\n".join(svg_parts)
 
 
 class SceneBlockingSet(BaseModel):
@@ -842,22 +742,17 @@ class SceneBlockingSet(BaseModel):
 
     model_config = ConfigDict(
         json_schema_extra={
-            "example": {
-                "scene_id": "550e8400-e29b-41d4-a716-446655440003",
-                "diagrams": []
-            }
+            "example": {"scene_id": "550e8400-e29b-41d4-a716-446655440003", "diagrams": []}
         }
     )
 
     scene_id: UUID = Field(..., description="ID of the scene")
     scene_number: int | None = Field(default=None, ge=1, description="Scene number")
     diagrams: list[BlockingDiagram] = Field(
-        default_factory=list,
-        description="Blocking diagrams for different beats"
+        default_factory=list, description="Blocking diagrams for different beats"
     )
     notes: str | None = Field(
-        default=None, max_length=2000,
-        description="General blocking notes for the scene"
+        default=None, max_length=2000, description="General blocking notes for the scene"
     )
 
     @computed_field

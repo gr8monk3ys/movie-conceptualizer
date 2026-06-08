@@ -1,6 +1,6 @@
 """Export API routes."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
@@ -120,7 +120,7 @@ async def export_shot_list(
     # Generate filename
     safe_title = "".join(c if c.isalnum() or c in " -_" else "" for c in project.title)
     safe_title = safe_title.replace(" ", "_")[:50]
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     filename = f"{safe_title}_shotlist_{timestamp}.{format.value}"
 
     if format == ExportFormat.PDF:
@@ -133,7 +133,7 @@ async def export_shot_list(
                 "message": "PDF export not yet implemented in MVP",
                 "json_data": export_data,
             },
-            generated_at=datetime.now(timezone.utc),
+            generated_at=datetime.now(UTC),
         )
 
     return ExportResponse(
@@ -141,7 +141,7 @@ async def export_shot_list(
         format=format,
         filename=filename,
         data=export_data,
-        generated_at=datetime.now(timezone.utc),
+        generated_at=datetime.now(UTC),
     )
 
 
@@ -228,7 +228,7 @@ async def export_storyboard(
     # Generate filename
     safe_title = "".join(c if c.isalnum() or c in " -_" else "" for c in project.title)
     safe_title = safe_title.replace(" ", "_")[:50]
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     filename = f"{safe_title}_storyboard_{timestamp}.{format.value}"
 
     if format == ExportFormat.PDF:
@@ -241,7 +241,7 @@ async def export_storyboard(
                 "message": "PDF export not yet implemented in MVP",
                 "json_data": export_data,
             },
-            generated_at=datetime.now(timezone.utc),
+            generated_at=datetime.now(UTC),
         )
 
     return ExportResponse(
@@ -249,7 +249,7 @@ async def export_storyboard(
         format=format,
         filename=filename,
         data=export_data,
-        generated_at=datetime.now(timezone.utc),
+        generated_at=datetime.now(UTC),
     )
 
 
@@ -328,7 +328,7 @@ async def export_analysis(
     # Generate filename
     safe_title = "".join(c if c.isalnum() or c in " -_" else "" for c in project.title)
     safe_title = safe_title.replace(" ", "_")[:50]
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     filename = f"{safe_title}_analysis_{timestamp}.{format.value}"
 
     if format == ExportFormat.PDF:
@@ -340,7 +340,7 @@ async def export_analysis(
                 "message": "PDF export not yet implemented in MVP",
                 "json_data": export_data,
             },
-            generated_at=datetime.now(timezone.utc),
+            generated_at=datetime.now(UTC),
         )
 
     return ExportResponse(
@@ -348,5 +348,5 @@ async def export_analysis(
         format=format,
         filename=filename,
         data=export_data,
-        generated_at=datetime.now(timezone.utc),
+        generated_at=datetime.now(UTC),
     )

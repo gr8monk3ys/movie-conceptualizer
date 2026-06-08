@@ -7,7 +7,7 @@ for robust validation, serialization, and type safety.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 from uuid import UUID, uuid4
@@ -137,18 +137,17 @@ class DialogueBlock(BaseModel):
                 "dialogue": "We need to talk about what happened.",
                 "parenthetical": "softly",
                 "is_dual_dialogue": False,
-                "character_extension": "V.O."
+                "character_extension": "V.O.",
             }
         }
     )
 
     character_name: str = Field(..., description="Name of the character speaking")
     dialogue: str = Field(..., description="The spoken dialogue text")
-    parenthetical: str | None = Field(
-        default=None, description="Acting direction in parentheses"
-    )
+    parenthetical: str | None = Field(default=None, description="Acting direction in parentheses")
     is_dual_dialogue: bool = Field(
-        default=False, description="Whether this is dual dialogue (two characters speaking simultaneously)"
+        default=False,
+        description="Whether this is dual dialogue (two characters speaking simultaneously)",
     )
     character_extension: str | None = Field(
         default=None, description="Extension like (V.O.), (O.S.), (CONT'D)"
@@ -172,13 +171,15 @@ class ActionBlock(BaseModel):
         json_schema_extra={
             "example": {
                 "text": "Sarah enters the dimly lit room, her footsteps echoing on the hardwood floor.",
-                "is_centered": False
+                "is_centered": False,
             }
         }
     )
 
     text: str = Field(..., description="The action/description text")
-    is_centered: bool = Field(default=False, description="Whether text is centered (e.g., for montages)")
+    is_centered: bool = Field(
+        default=False, description="Whether text is centered (e.g., for montages)"
+    )
 
 
 class Transition(BaseModel):
@@ -187,13 +188,7 @@ class Transition(BaseModel):
     Standard film transitions like CUT TO:, DISSOLVE TO:, FADE IN:, etc.
     """
 
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "text": "CUT TO:"
-            }
-        }
-    )
+    model_config = ConfigDict(json_schema_extra={"example": {"text": "CUT TO:"}})
 
     text: str = Field(..., description="The transition text (e.g., CUT TO:)")
 
@@ -218,31 +213,25 @@ class Character(BaseModel):
                 "name": "SARAH CHEN",
                 "description": "A determined detective in her late 30s with sharp instincts",
                 "first_appearance": 1,
-                "dialogue_count": 45
+                "dialogue_count": 45,
             }
         }
     )
 
     id: UUID = Field(default_factory=uuid4, description="Unique identifier")
-    name: str = Field(..., min_length=1, max_length=100, description="Character name as appears in script")
-    normalized_name: str = Field(
-        default="", description="Normalized name for matching"
+    name: str = Field(
+        ..., min_length=1, max_length=100, description="Character name as appears in script"
     )
-    dialogue_count: int = Field(
-        default=0, ge=0, description="Number of dialogue blocks"
-    )
+    normalized_name: str = Field(default="", description="Normalized name for matching")
+    dialogue_count: int = Field(default=0, ge=0, description="Number of dialogue blocks")
     scene_appearances: list[int] = Field(
         default_factory=list, description="Scene numbers where character appears"
     )
-    first_appearance: int | None = Field(
-        default=None, ge=1, description="First scene number"
-    )
+    first_appearance: int | None = Field(default=None, ge=1, description="First scene number")
     description: str | None = Field(
         default=None, max_length=2000, description="Character description if found"
     )
-    aliases: list[str] = Field(
-        default_factory=list, description="Alternative names/references"
-    )
+    aliases: list[str] = Field(default_factory=list, description="Alternative names/references")
     is_principal: bool = Field(
         default=False, description="Whether this is a principal/speaking role"
     )
@@ -279,22 +268,16 @@ class Location(BaseModel):
                 "name": "POLICE STATION",
                 "scene_type": "INT",
                 "time_of_day": "DAY",
-                "description": "A busy metropolitan police precinct"
+                "description": "A busy metropolitan police precinct",
             }
         }
     )
 
     id: UUID = Field(default_factory=uuid4, description="Unique identifier")
     name: str = Field(..., min_length=1, max_length=200, description="Location name")
-    normalized_name: str = Field(
-        default="", description="Normalized name for matching"
-    )
-    scene_type: SceneType = Field(
-        default=SceneType.UNKNOWN, description="Interior/Exterior"
-    )
-    time_of_day: TimeOfDay = Field(
-        default=TimeOfDay.UNKNOWN, description="Default time of day"
-    )
+    normalized_name: str = Field(default="", description="Normalized name for matching")
+    scene_type: SceneType = Field(default=SceneType.UNKNOWN, description="Interior/Exterior")
+    time_of_day: TimeOfDay = Field(default=TimeOfDay.UNKNOWN, description="Default time of day")
     scene_appearances: list[int] = Field(
         default_factory=list, description="Scene numbers at this location"
     )
@@ -307,9 +290,7 @@ class Location(BaseModel):
     address: str | None = Field(
         default=None, max_length=500, description="Real-world address if scouted"
     )
-    notes: str | None = Field(
-        default=None, max_length=1000, description="Production notes"
-    )
+    notes: str | None = Field(default=None, max_length=1000, description="Production notes")
 
     def model_post_init(self, __context: Any) -> None:
         """Set normalized name if not provided."""
@@ -346,7 +327,7 @@ class BreakdownElement(BaseModel):
                 "description": "Authentic-looking police detective badge, gold finish",
                 "scenes": [1, 3, 7, 12],
                 "quantity": 2,
-                "estimated_cost": 150.00
+                "estimated_cost": 150.00,
             }
         }
     )
@@ -364,9 +345,7 @@ class BreakdownElement(BaseModel):
     notes: str | None = Field(
         default=None, max_length=1000, description="Additional production notes"
     )
-    estimated_cost: float | None = Field(
-        default=None, ge=0, description="Estimated cost in USD"
-    )
+    estimated_cost: float | None = Field(default=None, ge=0, description="Estimated cost in USD")
     is_critical: bool = Field(
         default=False, description="Whether this element is critical to the scene"
     )
@@ -397,7 +376,7 @@ class Scene(BaseModel):
                 "time_of_day": "DAY",
                 "page_count": 2.5,
                 "emotional_beat": "tension",
-                "characters": ["SARAH", "CHIEF MARTINEZ"]
+                "characters": ["SARAH", "CHIEF MARTINEZ"],
             }
         }
     )
@@ -405,25 +384,15 @@ class Scene(BaseModel):
     id: UUID = Field(default_factory=uuid4, description="Unique identifier")
     scene_number: int = Field(..., ge=1, description="Sequential scene number")
     heading: str = Field(..., min_length=1, description="Full scene heading/slugline")
-    scene_type: SceneType = Field(
-        default=SceneType.UNKNOWN, description="INT/EXT type"
-    )
+    scene_type: SceneType = Field(default=SceneType.UNKNOWN, description="INT/EXT type")
     location: str = Field(default="", description="Location name")
-    time_of_day: TimeOfDay = Field(
-        default=TimeOfDay.UNKNOWN, description="Time of day"
-    )
+    time_of_day: TimeOfDay = Field(default=TimeOfDay.UNKNOWN, description="Time of day")
     content: list[ActionBlock | DialogueBlock | Transition] = Field(
         default_factory=list, description="Scene content blocks"
     )
-    characters: list[str] = Field(
-        default_factory=list, description="Character names in this scene"
-    )
-    page_start: float = Field(
-        default=0.0, ge=0, description="Approximate starting page"
-    )
-    page_length: float = Field(
-        default=0.0, ge=0, description="Approximate page length"
-    )
+    characters: list[str] = Field(default_factory=list, description="Character names in this scene")
+    page_start: float = Field(default=0.0, ge=0, description="Approximate starting page")
+    page_length: float = Field(default=0.0, ge=0, description="Approximate page length")
     page_count: float = Field(
         default=0.0, ge=0, le=50, description="Page count (alias for page_length)"
     )
@@ -437,9 +406,7 @@ class Scene(BaseModel):
     synopsis: str | None = Field(
         default=None, max_length=500, description="Brief summary of the scene"
     )
-    notes: str | None = Field(
-        default=None, max_length=1000, description="Director/writer notes"
-    )
+    notes: str | None = Field(default=None, max_length=1000, description="Director/writer notes")
 
     @field_validator("heading")
     @classmethod
@@ -500,7 +467,7 @@ class TitlePage(BaseModel):
             "example": {
                 "title": "The Investigation",
                 "author": "Jane Doe",
-                "draft_date": "January 15, 2024"
+                "draft_date": "January 15, 2024",
             }
         }
     )
@@ -535,41 +502,29 @@ class Script(BaseModel):
                 "id": "550e8400-e29b-41d4-a716-446655440004",
                 "title": "The Investigation",
                 "total_pages": 95.0,
-                "format_type": "fountain"
+                "format_type": "fountain",
             }
         }
     )
 
     id: UUID = Field(default_factory=uuid4, description="Unique identifier")
     title: str = Field(default="Untitled", description="Script title")
-    title_page: TitlePage = Field(
-        default_factory=TitlePage, description="Title page metadata"
-    )
+    title_page: TitlePage = Field(default_factory=TitlePage, description="Title page metadata")
     scenes: list[Scene] = Field(default_factory=list, description="All scenes")
-    characters: list[Character] = Field(
-        default_factory=list, description="All unique characters"
-    )
-    locations: list[Location] = Field(
-        default_factory=list, description="All unique locations"
-    )
+    characters: list[Character] = Field(default_factory=list, description="All unique characters")
+    locations: list[Location] = Field(default_factory=list, description="All unique locations")
     elements: list[BreakdownElement] = Field(
         default_factory=list, description="All breakdown elements"
     )
     total_pages: float = Field(default=0.0, ge=0, description="Total page count")
     raw_text: str = Field(default="", description="Original raw text")
     source_file: str | None = Field(default=None, description="Source file path")
-    parsed_at: datetime = Field(
-        default_factory=datetime.now, description="When script was parsed"
-    )
+    parsed_at: datetime = Field(default_factory=datetime.now, description="When script was parsed")
     format_type: str = Field(
         default="fountain", description="Source format (fountain, fdx, pdf, etc.)"
     )
-    logline: str | None = Field(
-        default=None, max_length=500, description="One-sentence summary"
-    )
-    synopsis: str | None = Field(
-        default=None, max_length=5000, description="Full synopsis"
-    )
+    logline: str | None = Field(default=None, max_length=500, description="One-sentence summary")
+    synopsis: str | None = Field(default=None, max_length=5000, description="Full synopsis")
 
     @computed_field
     @property
@@ -651,17 +606,13 @@ class Script(BaseModel):
         """Get all scenes featuring a character."""
         normalized = name.upper().strip()
         return [
-            scene for scene in self.scenes
-            if normalized in [c.upper() for c in scene.characters]
+            scene for scene in self.scenes if normalized in [c.upper() for c in scene.characters]
         ]
 
     def get_scenes_at_location(self, name: str) -> list[Scene]:
         """Get all scenes at a location."""
         normalized = name.upper().strip()
-        return [
-            scene for scene in self.scenes
-            if scene.location.upper().strip() == normalized
-        ]
+        return [scene for scene in self.scenes if scene.location.upper().strip() == normalized]
 
     def get_elements_by_category(self, category: BreakdownCategory) -> list[BreakdownElement]:
         """Get all breakdown elements in a specific category."""
@@ -689,7 +640,7 @@ class Project(BaseModel):
                 "target_length": 90,
                 "genres": ["thriller", "drama"],
                 "created_at": "2024-01-15T10:30:00Z",
-                "updated_at": "2024-01-20T14:45:00Z"
+                "updated_at": "2024-01-20T14:45:00Z",
             }
         }
     )
@@ -699,13 +650,23 @@ class Project(BaseModel):
     type: ProjectType = Field(..., description="Short film or feature length")
     target_length: int = Field(..., gt=0, le=300, description="Target runtime in minutes")
     genres: list[Genre] = Field(default_factory=list, description="Film genres (can be multiple)")
-    created_at: datetime = Field(default_factory=datetime.utcnow, description="Project creation timestamp")
-    updated_at: datetime = Field(default_factory=datetime.utcnow, description="Last update timestamp")
+    created_at: datetime = Field(
+        default_factory=datetime.utcnow, description="Project creation timestamp"
+    )
+    updated_at: datetime = Field(
+        default_factory=datetime.utcnow, description="Last update timestamp"
+    )
     script: Script | None = Field(default=None, description="The screenplay")
-    description: str | None = Field(default=None, max_length=2000, description="Project description/logline")
-    status: str = Field(default="draft", description="Project status (draft, in_progress, complete)")
+    description: str | None = Field(
+        default=None, max_length=2000, description="Project description/logline"
+    )
+    status: str = Field(
+        default="draft", description="Project status (draft, in_progress, complete)"
+    )
     owner_id: UUID | None = Field(default=None, description="User ID of project owner")
-    collaborator_ids: list[UUID] = Field(default_factory=list, description="User IDs of collaborators")
+    collaborator_ids: list[UUID] = Field(
+        default_factory=list, description="User IDs of collaborators"
+    )
     tags: list[str] = Field(default_factory=list, description="Custom tags for organization")
 
     @field_validator("genres")
@@ -742,7 +703,7 @@ class Project(BaseModel):
 
     def update_timestamp(self) -> None:
         """Update the updated_at timestamp to current time."""
-        self.updated_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(UTC)
 
 
 # Type alias for parsed script (for backwards compatibility)

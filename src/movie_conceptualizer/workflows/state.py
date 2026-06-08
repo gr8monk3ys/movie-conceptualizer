@@ -6,7 +6,7 @@ workflow, carrying data between nodes.
 
 from __future__ import annotations
 
-from typing import Annotated, TypedDict
+from typing import Annotated, Any, TypedDict
 
 from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field
@@ -72,7 +72,7 @@ class PipelineState(TypedDict, total=False):
     """List of any errors encountered during processing."""
 
     # Messages for human-in-the-loop
-    messages: Annotated[list, add_messages]
+    messages: Annotated[list[Any], add_messages]
     """Messages for human-in-the-loop interaction."""
 
 
@@ -114,15 +114,9 @@ class PipelineResult(BaseModel):
     analyzed_scenes: list[AnalyzedScene] = Field(
         default_factory=list, description="All analyzed scenes"
     )
-    shot_lists: list[ShotList] = Field(
-        default_factory=list, description="All shot lists"
-    )
-    storyboards: list[Storyboard] = Field(
-        default_factory=list, description="All storyboards"
-    )
-    errors: list[str] = Field(
-        default_factory=list, description="Any errors encountered"
-    )
+    shot_lists: list[ShotList] = Field(default_factory=list, description="All shot lists")
+    storyboards: list[Storyboard] = Field(default_factory=list, description="All storyboards")
+    errors: list[str] = Field(default_factory=list, description="Any errors encountered")
     success: bool = Field(description="Whether the pipeline completed successfully")
 
     @classmethod

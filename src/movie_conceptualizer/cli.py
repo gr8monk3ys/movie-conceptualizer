@@ -3,7 +3,7 @@
 import asyncio
 import json
 import shutil
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import typer
@@ -129,7 +129,7 @@ def db_backup(
         console.print(f"[red]Error:[/red] Database file not found: {db_path}")
         raise typer.Exit(1)
 
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     backup_path = output or db_path.with_name(f"{db_path.stem}_backup_{timestamp}{db_path.suffix}")
     backup_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(db_path, backup_path)
@@ -176,13 +176,15 @@ def analyze(
 [cyan]Pacing:[/cyan] {analyzed.pacing.value}
 [cyan]Emotional Beats:[/cyan] {len(analyzed.emotional_beats)}
 [cyan]Summary:[/cyan] {analyzed.summary}
-[cyan]Atmosphere:[/cyan] {analyzed.scene_atmosphere or 'N/A'}"""
+[cyan]Atmosphere:[/cyan] {analyzed.scene_atmosphere or "N/A"}"""
 
-        console.print(Panel(
-            panel_content,
-            title=f"Scene {analyzed.scene_number}: {analyzed.scene_heading[:50]}",
-            border_style="blue",
-        ))
+        console.print(
+            Panel(
+                panel_content,
+                title=f"Scene {analyzed.scene_number}: {analyzed.scene_heading[:50]}",
+                border_style="blue",
+            )
+        )
 
     if output:
         output_data = {"scenes": [s.model_dump() for s in analyzed_scenes]}
@@ -241,8 +243,12 @@ def shots(
         table.add_column("Description", style="white")
 
         for shot in shot_list.shots:
-            movement = shot.camera_movement.value if hasattr(shot.camera_movement, 'value') else (shot.camera_movement or "STATIC")
-            shot_type = shot.shot_type.value if hasattr(shot.shot_type, 'value') else shot.shot_type
+            movement = (
+                shot.camera_movement.value
+                if hasattr(shot.camera_movement, "value")
+                else (shot.camera_movement or "STATIC")
+            )
+            shot_type = shot.shot_type.value if hasattr(shot.shot_type, "value") else shot.shot_type
             table.add_row(
                 str(shot.shot_number),
                 shot_type,
@@ -309,11 +315,13 @@ def storyboard(
     console.print(f"[bold]Total Frames:[/bold] {len(all_frames)}\n")
 
     for i, frame in enumerate(all_frames[:10], 1):  # Show first 10
-        console.print(Panel(
-            frame.image_prompt,
-            title=f"Frame {i}: Shot {frame.shot_id}",
-            border_style="magenta",
-        ))
+        console.print(
+            Panel(
+                frame.image_prompt,
+                title=f"Frame {i}: Shot {frame.shot_id}",
+                border_style="magenta",
+            )
+        )
 
     if len(all_frames) > 10:
         console.print(f"\n[dim]... and {len(all_frames) - 10} more frames[/dim]")
@@ -343,15 +351,17 @@ def pipeline(
 
     script = load_script(str(script_path))
 
-    console.print(Panel(
-        f"[bold]{script.title or 'Untitled'}[/bold]\n\n"
-        f"Scenes: {len(script.scenes)}\n"
-        f"Characters: {len(script.characters)}\n"
-        f"Model: {model}\n"
-        f"Style: {style}",
-        title="🎬 Movie Conceptualizer Pipeline",
-        border_style="green",
-    ))
+    console.print(
+        Panel(
+            f"[bold]{script.title or 'Untitled'}[/bold]\n\n"
+            f"Scenes: {len(script.scenes)}\n"
+            f"Characters: {len(script.characters)}\n"
+            f"Model: {model}\n"
+            f"Style: {style}",
+            title="🎬 Movie Conceptualizer Pipeline",
+            border_style="green",
+        )
+    )
 
     config = PipelineConfig(
         model_name=model,
@@ -412,13 +422,15 @@ def serve(
     """Start the API server."""
     import uvicorn
 
-    console.print(Panel(
-        f"Starting server at [bold]http://{host}:{port}[/bold]\n\n"
-        f"API docs: http://{host}:{port}/docs\n"
-        f"Health: http://{host}:{port}/health",
-        title="🎬 Movie Conceptualizer API",
-        border_style="green",
-    ))
+    console.print(
+        Panel(
+            f"Starting server at [bold]http://{host}:{port}[/bold]\n\n"
+            f"API docs: http://{host}:{port}/docs\n"
+            f"Health: http://{host}:{port}/health",
+            title="🎬 Movie Conceptualizer API",
+            border_style="green",
+        )
+    )
 
     uvicorn.run(
         "movie_conceptualizer.api.main:app",

@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from movie_conceptualizer.api.schemas import GenerationStatusResponse, ProjectStatus
 from movie_conceptualizer.api.dependencies import ProjectStore, Workflow
+from movie_conceptualizer.api.schemas import GenerationStatusResponse, ProjectStatus
 from movie_conceptualizer.storage import JobRepository
 
 
@@ -49,7 +49,7 @@ async def run_pipeline_for_project(
     if not scenes_to_process:
         raise ValueError("No matching scenes found for the specified scene numbers")
 
-    project.processing_started_at = datetime.now(timezone.utc)
+    project.processing_started_at = datetime.now(UTC)
     project.progress = 0.0
     project.steps_completed = []
     project.error_message = None
@@ -107,9 +107,7 @@ async def run_pipeline_for_project(
 
         shots_to_process = project.shots
         if scene_numbers:
-            shots_to_process = [
-                s for s in project.shots if s.scene_number in scene_numbers
-            ]
+            shots_to_process = [s for s in project.shots if s.scene_number in scene_numbers]
 
         prompts = await workflow.generate_storyboard_prompts(
             shots_to_process,
@@ -126,7 +124,7 @@ async def run_pipeline_for_project(
     project.status = ProjectStatus.COMPLETED
     project.current_step = None
     project.progress = 100.0
-    project.processing_completed_at = datetime.now(timezone.utc)
+    project.processing_completed_at = datetime.now(UTC)
     project.update()
     await store.update_project(project)
     await _update_job_progress(job_repo, job_id, project.progress, project.current_step)
@@ -307,7 +305,7 @@ async def run_storyboard_for_project(
     project.status = ProjectStatus.COMPLETED
     project.current_step = None
     project.progress = 100.0
-    project.processing_completed_at = datetime.now(timezone.utc)
+    project.processing_completed_at = datetime.now(UTC)
     project.update()
 
     await store.save_storyboard(project_id, prompts, style, aspect_ratio)

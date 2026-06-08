@@ -1,11 +1,17 @@
 """AI generation API routes."""
 
 import os
-from uuid import uuid4
 from typing import Annotated
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 
+from movie_conceptualizer.api.arq_queue import (
+    enqueue_analysis_job,
+    enqueue_full_pipeline_job,
+    enqueue_shots_job,
+    enqueue_storyboard_job,
+)
 from movie_conceptualizer.api.dependencies import (
     ProjectStore,
     UserInDB,
@@ -29,12 +35,6 @@ from movie_conceptualizer.api.job_payloads import (
     encode_payload,
 )
 from movie_conceptualizer.api.jobs import get_job_manager
-from movie_conceptualizer.api.arq_queue import (
-    enqueue_analysis_job,
-    enqueue_full_pipeline_job,
-    enqueue_shots_job,
-    enqueue_storyboard_job,
-)
 from movie_conceptualizer.api.ratelimit import (
     DEFAULT_RATE_LIMIT,
     GENERATION_RATE_LIMIT,
@@ -44,12 +44,11 @@ from movie_conceptualizer.api.schemas import (
     AnalysisRequest,
     AnalysisResponse,
     ErrorResponse,
-    GenerationJobResponse,
     GenerateShotsRequest,
     GenerateStoryboardRequest,
+    GenerationJobResponse,
     GenerationStatusResponse,
     JobStatus,
-    ProjectStatus,
     RunPipelineRequest,
     ShotListResponse,
     StoryboardResponse,
@@ -93,9 +92,7 @@ async def analyze_script(
     response: Response,
     project_id: str,
     body: AnalysisRequest | None = None,
-    async_run: bool = Query(
-        False, description="Run analysis in background and return a job ID"
-    ),
+    async_run: bool = Query(False, description="Run analysis in background and return a job ID"),
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
     store: ProjectStore = Depends(get_project_store),
     workflow: Workflow = Depends(get_workflow),
@@ -594,9 +591,7 @@ async def run_full_pipeline(
     response: Response,
     project_id: str,
     body: RunPipelineRequest | None = None,
-    async_run: bool = Query(
-        False, description="Run pipeline in background and return a job ID"
-    ),
+    async_run: bool = Query(False, description="Run pipeline in background and return a job ID"),
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
     store: ProjectStore = Depends(get_project_store),
     workflow: Workflow = Depends(get_workflow),

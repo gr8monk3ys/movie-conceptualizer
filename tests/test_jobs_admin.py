@@ -209,7 +209,9 @@ def test_jobs_access_and_audit_logs(client):
     content_disposition = response.headers.get("content-disposition", "")
     assert content_disposition.startswith("attachment; filename=job_audit_logs_")
     assert content_disposition.endswith(".csv")
-    assert len(content_disposition) >= len("attachment; filename=job_audit_logs_20240101_000000.csv")
+    assert len(content_disposition) >= len(
+        "attachment; filename=job_audit_logs_20240101_000000.csv"
+    )
     assert "created_at" in response.text
     assert "Z" in response.text
 

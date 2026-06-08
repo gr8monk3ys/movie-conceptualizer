@@ -7,13 +7,13 @@ import os
 from arq import Retry
 from arq.connections import RedisSettings
 
+from movie_conceptualizer.api.dependencies import ProjectStore, get_workflow
 from movie_conceptualizer.api.generation_service import (
     run_analysis_for_project,
     run_pipeline_for_project,
     run_shots_for_project,
     run_storyboard_for_project,
 )
-from movie_conceptualizer.api.dependencies import ProjectStore, get_workflow
 from movie_conceptualizer.api.schemas import JobStatus
 from movie_conceptualizer.storage import JobRepository
 
@@ -30,7 +30,7 @@ async def _handle_job_failure(
 
     if job_try < max_tries:
         await repo.update_status(job_id, JobStatus.QUEUED.value, error=error_message)
-        delay = min(2 ** job_try, 60)
+        delay = min(2**job_try, 60)
         raise Retry(delay=delay)
 
     await repo.update_status(job_id, JobStatus.FAILED.value, error=error_message)

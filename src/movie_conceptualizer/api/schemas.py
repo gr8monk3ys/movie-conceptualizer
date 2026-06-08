@@ -81,9 +81,7 @@ class UploadScriptRequest(BaseModel):
     """Request schema for uploading a script."""
 
     content: str = Field(..., min_length=1, description="Script content as text")
-    format: str = Field(
-        "fountain", description="Script format (fountain, plaintext, fdx, pdf)"
-    )
+    format: str = Field("fountain", description="Script format (fountain, plaintext, fdx, pdf)")
 
 
 class SceneData(BaseModel):
@@ -207,9 +205,7 @@ class ShotData(BaseModel):
 class GenerateShotsRequest(BaseModel):
     """Request to generate shot list."""
 
-    scene_numbers: list[int] | None = Field(
-        None, description="Specific scenes (None for all)"
-    )
+    scene_numbers: list[int] | None = Field(None, description="Specific scenes (None for all)")
     style: str | None = Field(None, description="Visual style guidance")
     shots_per_scene: int | None = Field(None, ge=1, le=50, description="Target shots per scene")
 

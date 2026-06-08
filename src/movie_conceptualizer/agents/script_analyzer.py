@@ -132,9 +132,7 @@ inform shot design and storyboard creation."""
         scene_text = self._format_scene_for_analysis(scene)
 
         # Count characters and determine dialogue/action heaviness
-        dialogue_count = sum(
-            1 for el in scene.content if isinstance(el, DialogueBlock)
-        )
+        dialogue_count = sum(1 for el in scene.content if isinstance(el, DialogueBlock))
         action_count = len(scene.content) - dialogue_count
         is_dialogue_heavy = dialogue_count > action_count
         is_action_heavy = action_count > dialogue_count
@@ -165,9 +163,7 @@ and detailed in your analysis."""
 
         return result
 
-    async def aanalyze_scene(
-        self, scene: Scene, script_context: str = ""
-    ) -> AnalyzedScene:
+    async def aanalyze_scene(self, scene: Scene, script_context: str = "") -> AnalyzedScene:
         """Async version of analyze_scene.
 
         Args:
@@ -179,9 +175,7 @@ and detailed in your analysis."""
         """
         scene_text = self._format_scene_for_analysis(scene)
 
-        dialogue_count = sum(
-            1 for el in scene.content if isinstance(el, DialogueBlock)
-        )
+        dialogue_count = sum(1 for el in scene.content if isinstance(el, DialogueBlock))
         action_count = len(scene.content) - dialogue_count
         is_dialogue_heavy = dialogue_count > action_count
         is_action_heavy = action_count > dialogue_count
@@ -232,9 +226,7 @@ and detailed in your analysis."""
         overall_tone = self._determine_overall_tone(analyzed_scenes)
 
         # Extract main characters with consolidated descriptions
-        main_characters = self._consolidate_character_descriptions(
-            script, analyzed_scenes
-        )
+        main_characters = self._consolidate_character_descriptions(script, analyzed_scenes)
 
         # Detect genre hints
         genre_hints = self._detect_genre_hints(script, analyzed_scenes)
@@ -261,15 +253,11 @@ and detailed in your analysis."""
         script_context = self._generate_script_context(script)
 
         # Analyze all scenes concurrently
-        tasks = [
-            self.aanalyze_scene(scene, script_context) for scene in script.scenes
-        ]
+        tasks = [self.aanalyze_scene(scene, script_context) for scene in script.scenes]
         analyzed_scenes = await asyncio.gather(*tasks)
 
         overall_tone = self._determine_overall_tone(list(analyzed_scenes))
-        main_characters = self._consolidate_character_descriptions(
-            script, list(analyzed_scenes)
-        )
+        main_characters = self._consolidate_character_descriptions(script, list(analyzed_scenes))
         genre_hints = self._detect_genre_hints(script, list(analyzed_scenes))
 
         return AnalyzedScript(
@@ -294,12 +282,10 @@ and detailed in your analysis."""
 
         return f"""Title: {script.title}
 Total Scenes: {len(script.scenes)}
-Main Characters: {', '.join(character_names)}
-Key Locations: {', '.join(locations)}"""
+Main Characters: {", ".join(character_names)}
+Key Locations: {", ".join(locations)}"""
 
-    def _determine_overall_tone(
-        self, analyzed_scenes: list[AnalyzedScene]
-    ) -> EmotionalTone:
+    def _determine_overall_tone(self, analyzed_scenes: list[AnalyzedScene]) -> EmotionalTone:
         """Determine the overall tone of the script from scene analyses.
 
         Args:

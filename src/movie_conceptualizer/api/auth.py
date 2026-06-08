@@ -9,12 +9,12 @@ This module provides:
 
 from __future__ import annotations
 
-import os
-import secrets
-from datetime import datetime, timedelta, timezone
 import base64
 import hashlib
 import hmac
+import os
+import secrets
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request, status
@@ -23,7 +23,7 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel, Field, field_validator
 
-from movie_conceptualizer.storage import RefreshTokenRepository, UserRepository
+from movie_conceptualizer.storage import UserRepository
 
 # -----------------------------------------------------------------------------
 # Compatibility shim for bcrypt>=4, which removed bcrypt.__about__.__version__.
@@ -33,6 +33,7 @@ try:
     import bcrypt  # type: ignore
 
     if not hasattr(bcrypt, "__about__"):
+
         class _BcryptAbout:
             __version__ = getattr(bcrypt, "__version__", "unknown")
 
@@ -45,6 +46,7 @@ except Exception:
 # =============================================================================
 # Configuration
 # =============================================================================
+
 
 def _generate_dev_secret() -> str:
     """Generate a secure random secret for development.
@@ -77,11 +79,13 @@ ALLOW_DEV_FALLBACK = os.environ.get("MOVIECON_ALLOW_DEV_FALLBACK", "false").lowe
     "1",
     "yes",
 )
-ALLOW_REGISTRATION = os.environ.get("MOVIECON_ALLOW_REGISTRATION", "true").lower() in ("true", "1", "yes")
+ALLOW_REGISTRATION = os.environ.get("MOVIECON_ALLOW_REGISTRATION", "true").lower() in (
+    "true",
+    "1",
+    "yes",
+)
 ADMIN_USERS = [
-    u.strip()
-    for u in os.environ.get("MOVIECON_ADMIN_USERS", "").split(",")
-    if u.strip()
+    u.strip() for u in os.environ.get("MOVIECON_ADMIN_USERS", "").split(",") if u.strip()
 ]
 ADMIN_POLICY = os.environ.get("MOVIECON_ADMIN_POLICY", "role").lower()
 ADMIN_MFA_SECRET = os.environ.get("MOVIECON_ADMIN_MFA_SECRET", "").strip()
@@ -119,7 +123,7 @@ PASSWORD_POLICY_ENFORCE = os.environ.get("MOVIECON_PASSWORD_POLICY_ENFORCE", "tr
 )
 
 
-def is_admin_user(user: "UserInDB" | None) -> bool:
+def is_admin_user(user: UserInDB | None) -> bool:
     if user is None:
         return False
     if ADMIN_POLICY == "role":
@@ -173,6 +177,7 @@ def validate_password_policy(password: str) -> list[str]:
 # User Model and Storage
 # =============================================================================
 
+
 class User(BaseModel):
     """User model for authentication."""
 
@@ -181,13 +186,14 @@ class User(BaseModel):
     hashed_password: str = Field(..., description="Bcrypt hashed password")
     role: str = Field("user", description="User role")
     is_active: bool = Field(True, description="Whether user account is active")
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     model_config = {"from_attributes": True}
 
 
 class UserInDB(User):
     """User model with password field for database operations."""
+
     pass
 
 
@@ -318,6 +324,7 @@ def get_user_store() -> UserStore:
 # JWT Token Handling
 # =============================================================================
 
+
 class Token(BaseModel):
     """OAuth2 token response model."""
 
@@ -357,9 +364,9 @@ def create_access_token(
     to_encode = data.copy()
 
     if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
+        expire = datetime.now(UTC) + expires_delta
     else:
-        expire = datetime.now(timezone.utc) + timedelta(minutes=TOKEN_EXPIRE_MINUTES)
+        expire = datetime.now(UTC) + timedelta(minutes=TOKEN_EXPIRE_MINUTES)
 
     to_encode.update({"exp": expire})
 
@@ -385,7 +392,7 @@ def decode_access_token(token: str) -> TokenData | None:
         if user_id is None:
             return None
 
-        exp = datetime.fromtimestamp(exp_timestamp, tz=timezone.utc) if exp_timestamp else None
+        exp = datetime.fromtimestamp(exp_timestamp, tz=UTC) if exp_timestamp else None
 
         return TokenData(user_id=user_id, username=username, exp=exp)
     except JWTError:
@@ -412,13 +419,13 @@ def _verify_totp(secret_b32: str, code: str, window: int = 1) -> bool:
         return False
 
     timestep = 30
-    now = int(datetime.now(timezone.utc).timestamp())
+    now = int(datetime.now(UTC).timestamp())
     counter = now // timestep
     for offset in range(-window, window + 1):
         counter_bytes = (counter + offset).to_bytes(8, "big")
         digest = hmac.new(key, counter_bytes, hashlib.sha1).digest()
         offset_bits = digest[-1] & 0x0F
-        code_int = int.from_bytes(digest[offset_bits:offset_bits + 4], "big") & 0x7FFFFFFF
+        code_int = int.from_bytes(digest[offset_bits : offset_bits + 4], "big") & 0x7FFFFFFF
         otp = str(code_int % 1_000_000).zfill(6)
         if otp == code:
             return True
@@ -445,6 +452,7 @@ oauth2_scheme_strict = OAuth2PasswordBearer(
 # =============================================================================
 # Authentication Dependencies
 # =============================================================================
+
 
 async def get_current_user(
     token: Annotated[str | None, Depends(oauth2_scheme)],
@@ -611,7 +619,7 @@ def require_admin_if_enabled(
 
 
 def require_admin_access(
-    request: "Request",
+    request: Request,
     current_user: Annotated[UserInDB | None, Depends(get_current_user)],
 ) -> UserInDB:
     """Require admin access and optional MFA."""
@@ -642,6 +650,7 @@ def require_admin_access(
 # =============================================================================
 # Auth Request/Response Schemas
 # =============================================================================
+
 
 class LoginRequest(BaseModel):
     """Login request schema."""

@@ -8,10 +8,9 @@ import logging
 import os
 import time
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from threading import Lock
 from typing import Any
-
 
 request_id_var: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "request_id", default=None
@@ -33,7 +32,7 @@ class JsonFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         payload: dict[str, Any] = {
-            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
@@ -115,9 +114,7 @@ def get_request_metrics() -> dict[str, Any]:
     """Get a snapshot of in-memory request metrics."""
     with _metrics_lock:
         avg_latency = (
-            _request_latency_sum_ms / _request_latency_count
-            if _request_latency_count
-            else 0.0
+            _request_latency_sum_ms / _request_latency_count if _request_latency_count else 0.0
         )
         return {
             "count": _request_count,

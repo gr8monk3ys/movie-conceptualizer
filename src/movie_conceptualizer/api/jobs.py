@@ -5,22 +5,23 @@ from __future__ import annotations
 import asyncio
 import os
 from collections.abc import Callable, Coroutine
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
-from movie_conceptualizer.api.schemas import JobStatus
 from movie_conceptualizer.api.logging_utils import request_id_var
+from movie_conceptualizer.api.schemas import JobStatus
 from movie_conceptualizer.storage import JobRepository
+
 
 class JobRecord(BaseModel):
     """Record for a background job."""
 
     id: str = Field(default_factory=lambda: str(uuid4()))
     status: JobStatus = Field(default=JobStatus.QUEUED)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     description: str | None = None
     project_id: str | None = None
     user_id: str | None = None
@@ -87,11 +88,7 @@ class JobManager:
         coro_or_factory: Coroutine | Callable[[str], Coroutine],
     ) -> None:
         token = request_id_var.set(job_id)
-        coro = (
-            coro_or_factory(job_id)
-            if callable(coro_or_factory)
-            else coro_or_factory
-        )
+        coro = coro_or_factory(job_id) if callable(coro_or_factory) else coro_or_factory
         try:
             await self._repo.start_job(job_id)
         except Exception:

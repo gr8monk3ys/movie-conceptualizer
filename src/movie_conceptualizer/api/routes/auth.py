@@ -7,22 +7,22 @@ Provides endpoints for:
 - GET /api/v1/auth/status - Get authentication status
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 
 from movie_conceptualizer.api.auth import (
-    ALLOW_REGISTRATION,
     ALLOW_DEV_FALLBACK,
+    ALLOW_REGISTRATION,
     DEV_MODE,
     PASSWORD_POLICY_ENFORCE,
+    REFRESH_ROTATE,
+    REFRESH_TOKEN_EXPIRE_DAYS,
+    REFRESH_TOKENS_ENABLED,
     REQUIRE_AUTH,
     TOKEN_EXPIRE_MINUTES,
-    REFRESH_TOKENS_ENABLED,
-    REFRESH_TOKEN_EXPIRE_DAYS,
-    REFRESH_ROTATE,
     AuthStatusResponse,
     LoginRequest,
     RefreshTokenRequest,
@@ -41,7 +41,7 @@ from movie_conceptualizer.api.auth import (
     require_admin_access,
     validate_password_policy,
 )
-from movie_conceptualizer.api.ratelimit import AUTH_RATE_LIMIT, DEFAULT_RATE_LIMIT, GENERATION_RATE_LIMIT, limiter
+from movie_conceptualizer.api.ratelimit import AUTH_RATE_LIMIT, DEFAULT_RATE_LIMIT, limiter
 from movie_conceptualizer.api.schemas import ErrorResponse
 from movie_conceptualizer.storage import RefreshTokenRepository, UserRepository
 
@@ -133,7 +133,7 @@ async def login_for_access_token(
         await repo.create(
             user_id=user.id,
             token_hash=_hash_refresh_token(refresh_token),
-            expires_at=datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
+            expires_at=datetime.now(UTC) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
         )
 
     return Token(
@@ -216,7 +216,7 @@ async def login_json(
         await repo.create(
             user_id=user.id,
             token_hash=_hash_refresh_token(refresh_token),
-            expires_at=datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
+            expires_at=datetime.now(UTC) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
         )
 
     return Token(
@@ -442,7 +442,7 @@ async def refresh_access_token(
             detail="Invalid refresh token",
         )
     expires_at = record.get("expires_at")
-    if expires_at and expires_at < datetime.now(timezone.utc):
+    if expires_at and expires_at < datetime.now(UTC):
         await repo.revoke(token_hash)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -464,7 +464,7 @@ async def refresh_access_token(
         await repo.create(
             user_id=record["user_id"],
             token_hash=_hash_refresh_token(refresh_token),
-            expires_at=datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
+            expires_at=datetime.now(UTC) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
         )
 
     return Token(

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from movie_conceptualizer.models import (
     ActionBlock,
@@ -81,14 +81,27 @@ BONEYARD_PATTERN = re.compile(r"/\*.*?\*/", re.DOTALL)
 PAGE_BREAK_PATTERN = re.compile(r"^={3,}\s*$", re.MULTILINE)
 
 # Common character extensions
-CHARACTER_EXTENSIONS = frozenset({
-    "V.O.", "VO", "V.O",
-    "O.S.", "OS", "O.S", "O.C.", "OC",
-    "CONT'D", "CONT", "CONTINUED",
-    "PRE-LAP", "PRELAP",
-    "FILTER", "FILTERED",
-    "SUBTITLE", "SUBTITLED",
-})
+CHARACTER_EXTENSIONS = frozenset(
+    {
+        "V.O.",
+        "VO",
+        "V.O",
+        "O.S.",
+        "OS",
+        "O.S",
+        "O.C.",
+        "OC",
+        "CONT'D",
+        "CONT",
+        "CONTINUED",
+        "PRE-LAP",
+        "PRELAP",
+        "FILTER",
+        "FILTERED",
+        "SUBTITLE",
+        "SUBTITLED",
+    }
+)
 
 # Time of day mappings
 TIME_OF_DAY_MAPPINGS: dict[str, TimeOfDay] = {
@@ -139,7 +152,7 @@ class ParsedElement:
     time_of_day: TimeOfDay = TimeOfDay.UNKNOWN
     is_forced: bool = False
     is_dual_dialogue: bool = False
-    metadata: dict = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class FountainParser:
@@ -254,9 +267,7 @@ class FountainParser:
                 # Save current field if any
                 if current_key and current_value_lines:
                     value = "\n".join(current_value_lines).strip()
-                    self._title_page_fields.append(
-                        TitlePageField(key=current_key, value=value)
-                    )
+                    self._title_page_fields.append(TitlePageField(key=current_key, value=value))
                     current_key = None
                     current_value_lines = []
 
@@ -275,9 +286,7 @@ class FountainParser:
                 # Save previous field
                 if current_key and current_value_lines:
                     value = "\n".join(current_value_lines).strip()
-                    self._title_page_fields.append(
-                        TitlePageField(key=current_key, value=value)
-                    )
+                    self._title_page_fields.append(TitlePageField(key=current_key, value=value))
 
                 current_key = match.group(1).strip()
                 value = match.group(2).strip()
@@ -292,9 +301,7 @@ class FountainParser:
                     # Not a continuation, end title page
                     if current_value_lines:
                         value = "\n".join(current_value_lines).strip()
-                        self._title_page_fields.append(
-                            TitlePageField(key=current_key, value=value)
-                        )
+                        self._title_page_fields.append(TitlePageField(key=current_key, value=value))
                     self._state.in_title_page = False
                     content_start = i
                     break
@@ -307,9 +314,7 @@ class FountainParser:
         # Save any remaining field
         if current_key and current_value_lines:
             value = "\n".join(current_value_lines).strip()
-            self._title_page_fields.append(
-                TitlePageField(key=current_key, value=value)
-            )
+            self._title_page_fields.append(TitlePageField(key=current_key, value=value))
 
         self._raw_title_page = "\n".join(title_page_lines)
         return "\n".join(lines[content_start:])
@@ -462,7 +467,7 @@ class FountainParser:
         self,
         text: str,
         forced: bool = False,
-        match: re.Match | None = None,
+        match: re.Match[str] | None = None,
     ) -> None:
         """Parse a scene heading.
 
@@ -503,7 +508,7 @@ class FountainParser:
             )
             if prefix_match:
                 prefix = prefix_match.group(1).upper().rstrip(".")
-                location = location_part[prefix_match.end():].strip()
+                location = location_part[prefix_match.end() :].strip()
             else:
                 prefix = ""
                 location = location_part
@@ -899,7 +904,7 @@ class FountainParser:
         Returns:
             List of unique Character objects.
         """
-        character_data: dict[str, dict] = {}
+        character_data: dict[str, dict[str, Any]] = {}
 
         for scene in scenes:
             for char_name in scene.characters:
@@ -954,7 +959,7 @@ class FountainParser:
         Returns:
             List of unique Location objects.
         """
-        location_data: dict[str, dict] = {}
+        location_data: dict[str, dict[str, Any]] = {}
 
         for scene in scenes:
             if not scene.location:

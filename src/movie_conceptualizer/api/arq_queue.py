@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import os
-
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from arq.connections import RedisSettings
+    pass
 
 
 def get_redis_settings():
@@ -31,6 +30,7 @@ async def enqueue_full_pipeline_job(
     skip_storyboard: bool,
 ) -> None:
     from arq import create_pool
+
     redis = await create_pool(get_redis_settings())
     await redis.enqueue_job(
         "run_full_pipeline_job",
@@ -51,6 +51,7 @@ async def enqueue_analysis_job(
     scene_numbers: list[int] | None,
 ) -> None:
     from arq import create_pool
+
     redis = await create_pool(get_redis_settings())
     await redis.enqueue_job(
         "run_analysis_job",
@@ -69,6 +70,7 @@ async def enqueue_shots_job(
     shots_per_scene: int | None,
 ) -> None:
     from arq import create_pool
+
     redis = await create_pool(get_redis_settings())
     await redis.enqueue_job(
         "run_shots_job",
@@ -89,6 +91,7 @@ async def enqueue_storyboard_job(
     aspect_ratio: str,
 ) -> None:
     from arq import create_pool
+
     redis = await create_pool(get_redis_settings())
     await redis.enqueue_job(
         "run_storyboard_job",
