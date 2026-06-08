@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Generate pre-vis images from a storyboard prompt pack using OpenAI Images API."""
+
 from __future__ import annotations
 
 import argparse
@@ -12,7 +13,6 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-
 
 ENV_FILE_CANDIDATES = (".env",)
 

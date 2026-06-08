@@ -44,7 +44,8 @@ dependencies = [
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.24.0",
-    "ruff>=0.6.0",
+    # Pinned to match the ruff-pre-commit hook rev so CI and pre-commit agree.
+    "ruff==0.9.10",
     "mypy>=1.11.0",
 ]
 pdf = [

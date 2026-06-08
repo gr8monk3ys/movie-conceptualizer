@@ -169,7 +169,7 @@ def _json_loads(data: str | list[Any] | dict[str, Any] | None) -> Any:
     """
     if data is None:
         return None
-    if isinstance(data, (list, dict)):
+    if isinstance(data, list | dict):
         # Already parsed (PostgreSQL JSONB)
         return data
     return json.loads(data)
