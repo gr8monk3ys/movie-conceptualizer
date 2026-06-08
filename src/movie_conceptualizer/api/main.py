@@ -2,10 +2,12 @@
 
 import logging
 import os
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from typing import Any
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
@@ -104,7 +106,7 @@ configure_logging()
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await validate_config()
     yield
 
@@ -129,7 +131,7 @@ app = FastAPI(
 
 # Configure rate limiting
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)  # type: ignore[arg-type]
 
 # Configure CORS middleware
 cors_origins_env = os.environ.get("MOVIECON_CORS_ORIGINS", "").strip()
@@ -197,7 +199,9 @@ async def validate_config() -> None:
 
 
 @app.middleware("http")
-async def add_request_logging(request: Request, call_next):
+async def add_request_logging(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
     request_id = request.headers.get("X-Request-ID")
     token = request_id_var.set(request_id)
     start_ms = now_ms()
@@ -239,7 +243,7 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
     summary="API Information",
     description="Get basic information about the API.",
 )
-async def root(request: Request) -> dict:
+async def root(request: Request) -> dict[str, Any]:
     """Root endpoint with API information."""
     return {
         "name": API_TITLE,
@@ -265,12 +269,13 @@ async def root(request: Request) -> dict:
 
 @app.get(
     "/metrics",
+    response_model=None,
     tags=["info"],
     summary="Metrics endpoint",
     description="Expose structured request and job metrics.",
 )
-@limiter.exempt
-async def metrics_endpoint():
+@limiter.exempt  # type: ignore[untyped-decorator]
+async def metrics_endpoint() -> JSONResponse | dict[str, Any]:
     if not METRICS_ENABLED:
         return JSONResponse(
             status_code=status.HTTP_404_NOT_FOUND, content={"detail": "Metrics disabled"}
@@ -293,10 +298,10 @@ async def metrics_endpoint():
     summary="Health Check",
     description="Check if the API is running and healthy.",
 )
-@limiter.exempt
-async def health_check() -> dict:
+@limiter.exempt  # type: ignore[untyped-decorator]
+async def health_check() -> dict[str, Any]:
     """Health check endpoint."""
-    health_response = {
+    health_response: dict[str, Any] = {
         "status": "healthy",
         "timestamp": datetime.now(UTC).isoformat(),
         "version": API_VERSION,
@@ -329,8 +334,8 @@ async def health_check() -> dict:
     summary="Redis Health Check",
     description="Check the health of the Redis connection for rate limiting.",
 )
-@limiter.exempt
-async def redis_health_check() -> dict:
+@limiter.exempt  # type: ignore[untyped-decorator]
+async def redis_health_check() -> dict[str, Any]:
     """Redis-specific health check endpoint."""
     redis_health = await check_redis_health()
 
@@ -355,8 +360,8 @@ async def redis_health_check() -> dict:
     summary="Job Queue Health Check",
     description="Check health of the background job backend.",
 )
-@limiter.exempt
-async def jobs_health_check() -> dict:
+@limiter.exempt  # type: ignore[untyped-decorator]
+async def jobs_health_check() -> dict[str, Any]:
     """Job backend health check endpoint."""
     if JOB_BACKEND != "arq":
         return {
@@ -378,7 +383,7 @@ async def jobs_health_check() -> dict:
     description="Get information about API version 1.",
 )
 @limiter.limit(DEFAULT_RATE_LIMIT)
-async def api_v1_info(request: Request) -> dict:
+async def api_v1_info(request: Request) -> dict[str, Any]:
     """API v1 information endpoint."""
     return {
         "version": "1",

@@ -40,6 +40,7 @@ def decode_payload(payload: str | None) -> dict[str, Any]:
     if not payload:
         return {}
     try:
-        return json.loads(payload)
+        data = json.loads(payload)
     except json.JSONDecodeError:
         return {}
+    return data if isinstance(data, dict) else {}

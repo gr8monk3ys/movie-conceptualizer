@@ -1,7 +1,7 @@
 """AI generation API routes."""
 
 import os
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
@@ -34,7 +34,7 @@ from movie_conceptualizer.api.job_payloads import (
     StoryboardJobPayload,
     encode_payload,
 )
-from movie_conceptualizer.api.jobs import get_job_manager
+from movie_conceptualizer.api.jobs import JobManager, get_job_manager
 from movie_conceptualizer.api.ratelimit import (
     DEFAULT_RATE_LIMIT,
     GENERATION_RATE_LIMIT,
@@ -66,7 +66,7 @@ def _idempotency_max_age_seconds() -> int | None:
     return IDEMPOTENCY_TTL_DAYS * 24 * 60 * 60
 
 
-def _filter_scenes_by_numbers(scenes: list, scene_numbers: list[int] | None) -> list:
+def _filter_scenes_by_numbers(scenes: list[Any], scene_numbers: list[int] | None) -> list[Any]:
     """Filter scenes by scene numbers if provided."""
     if scene_numbers is None:
         return scenes
@@ -97,8 +97,8 @@ async def analyze_script(
     store: ProjectStore = Depends(get_project_store),
     workflow: Workflow = Depends(get_workflow),
     current_user: Annotated[UserInDB | None, Depends(require_auth_if_enabled)] = None,
-    job_manager=Depends(get_job_manager),
-) -> AnalysisResponse:
+    job_manager: JobManager = Depends(get_job_manager),
+) -> AnalysisResponse | GenerationJobResponse:
     """Run script analysis."""
     project = await store.get(project_id)
 
@@ -146,7 +146,7 @@ async def analyze_script(
                 return GenerationJobResponse(
                     job_id=existing_job_id,
                     status=JobStatus(existing_job.status) if existing_job else JobStatus.QUEUED,
-                    project_id=project.id,
+                    project_id=project_id,
                     message="Analysis already queued",
                 )
         backend = os.environ.get("MOVIECON_JOB_BACKEND", "inprocess").lower()
@@ -157,7 +157,7 @@ async def analyze_script(
             await repo.create(
                 job_id=job_id,
                 status=JobStatus.QUEUED.value,
-                project_id=project.id,
+                project_id=project_id,
                 user_id=current_user.id if current_user else None,
                 description="analysis",
                 payload=payload,
@@ -174,14 +174,14 @@ async def analyze_script(
             return GenerationJobResponse(
                 job_id=job_id,
                 status=JobStatus.QUEUED,
-                project_id=project.id,
+                project_id=project_id,
                 message="Analysis started in background",
             )
 
         repo = JobRepository()
         job = await job_manager.submit(
             lambda job_id: run_analysis_for_project(
-                project_id=project.id,
+                project_id=project_id,
                 store=store,
                 workflow=workflow,
                 scene_numbers=scene_numbers,
@@ -189,7 +189,7 @@ async def analyze_script(
                 job_id=job_id,
             ),
             description="analysis",
-            project_id=project.id,
+            project_id=project_id,
             user_id=current_user.id if current_user else None,
             payload=payload,
         )
@@ -204,12 +204,12 @@ async def analyze_script(
         return GenerationJobResponse(
             job_id=job.id,
             status=JobStatus.QUEUED,
-            project_id=project.id,
+            project_id=project_id,
             message="Analysis started in background",
         )
 
     await run_analysis_for_project(
-        project_id=project.id,
+        project_id=project_id,
         store=store,
         workflow=workflow,
         scene_numbers=scene_numbers,
@@ -217,7 +217,7 @@ async def analyze_script(
     project = await store.get(project_id)
 
     return AnalysisResponse(
-        project_id=project.id if project else project_id,
+        project_id=project_id if project else project_id,
         analyses=project.analyses if project else [],
         overall_tone=project.overall_tone if project else None,
         visual_motifs=project.visual_motifs if project else [],
@@ -250,8 +250,8 @@ async def generate_shots(
     store: ProjectStore = Depends(get_project_store),
     workflow: Workflow = Depends(get_workflow),
     current_user: Annotated[UserInDB | None, Depends(require_auth_if_enabled)] = None,
-    job_manager=Depends(get_job_manager),
-) -> ShotListResponse:
+    job_manager: JobManager = Depends(get_job_manager),
+) -> ShotListResponse | GenerationJobResponse:
     """Generate shot list for the project."""
     project = await store.get(project_id)
 
@@ -303,7 +303,7 @@ async def generate_shots(
                 return GenerationJobResponse(
                     job_id=existing_job_id,
                     status=JobStatus(existing_job.status) if existing_job else JobStatus.QUEUED,
-                    project_id=project.id,
+                    project_id=project_id,
                     message="Shots already queued",
                 )
         backend = os.environ.get("MOVIECON_JOB_BACKEND", "inprocess").lower()
@@ -320,14 +320,14 @@ async def generate_shots(
             await repo.create(
                 job_id=job_id,
                 status=JobStatus.QUEUED.value,
-                project_id=project.id,
+                project_id=project_id,
                 user_id=current_user.id if current_user else None,
                 description="shots",
                 payload=payload,
             )
             await enqueue_shots_job(
                 job_id=job_id,
-                project_id=project.id,
+                project_id=project_id,
                 scene_numbers=scene_numbers,
                 style=style,
                 shots_per_scene=shots_per_scene,
@@ -343,14 +343,14 @@ async def generate_shots(
             return GenerationJobResponse(
                 job_id=job_id,
                 status=JobStatus.QUEUED,
-                project_id=project.id,
+                project_id=project_id,
                 message="Shot generation started in background",
             )
 
         repo = JobRepository()
         job = await job_manager.submit(
             lambda job_id: run_shots_for_project(
-                project_id=project.id,
+                project_id=project_id,
                 store=store,
                 workflow=workflow,
                 scene_numbers=scene_numbers,
@@ -360,7 +360,7 @@ async def generate_shots(
                 job_id=job_id,
             ),
             description="shots",
-            project_id=project.id,
+            project_id=project_id,
             user_id=current_user.id if current_user else None,
             payload=payload,
         )
@@ -375,12 +375,12 @@ async def generate_shots(
         return GenerationJobResponse(
             job_id=job.id,
             status=JobStatus.QUEUED,
-            project_id=project.id,
+            project_id=project_id,
             message="Shot generation started in background",
         )
 
     await run_shots_for_project(
-        project_id=project.id,
+        project_id=project_id,
         store=store,
         workflow=workflow,
         scene_numbers=scene_numbers,
@@ -391,7 +391,7 @@ async def generate_shots(
 
     total_duration = sum(s.duration_seconds or 0 for s in project.shots) if project else 0
     return ShotListResponse(
-        project_id=project.id if project else project_id,
+        project_id=project_id if project else project_id,
         shots=project.shots if project else [],
         total_shots=len(project.shots) if project else 0,
         estimated_duration=total_duration if total_duration > 0 else None,
@@ -424,8 +424,8 @@ async def generate_storyboard(
     store: ProjectStore = Depends(get_project_store),
     workflow: Workflow = Depends(get_workflow),
     current_user: Annotated[UserInDB | None, Depends(require_auth_if_enabled)] = None,
-    job_manager=Depends(get_job_manager),
-) -> StoryboardResponse:
+    job_manager: JobManager = Depends(get_job_manager),
+) -> StoryboardResponse | GenerationJobResponse:
     """Generate storyboard prompts for the project."""
     project = await store.get(project_id)
 
@@ -479,7 +479,7 @@ async def generate_storyboard(
                 return GenerationJobResponse(
                     job_id=existing_job_id,
                     status=JobStatus(existing_job.status) if existing_job else JobStatus.QUEUED,
-                    project_id=project.id,
+                    project_id=project_id,
                     message="Storyboard already queued",
                 )
         backend = os.environ.get("MOVIECON_JOB_BACKEND", "inprocess").lower()
@@ -496,14 +496,14 @@ async def generate_storyboard(
             await repo.create(
                 job_id=job_id,
                 status=JobStatus.QUEUED.value,
-                project_id=project.id,
+                project_id=project_id,
                 user_id=current_user.id if current_user else None,
                 description="storyboard",
                 payload=payload,
             )
             await enqueue_storyboard_job(
                 job_id=job_id,
-                project_id=project.id,
+                project_id=project_id,
                 scene_numbers=scene_numbers,
                 style=style,
                 aspect_ratio=aspect_ratio,
@@ -519,14 +519,14 @@ async def generate_storyboard(
             return GenerationJobResponse(
                 job_id=job_id,
                 status=JobStatus.QUEUED,
-                project_id=project.id,
+                project_id=project_id,
                 message="Storyboard generation started in background",
             )
 
         repo = JobRepository()
         job = await job_manager.submit(
             lambda job_id: run_storyboard_for_project(
-                project_id=project.id,
+                project_id=project_id,
                 store=store,
                 workflow=workflow,
                 scene_numbers=scene_numbers,
@@ -536,7 +536,7 @@ async def generate_storyboard(
                 job_id=job_id,
             ),
             description="storyboard",
-            project_id=project.id,
+            project_id=project_id,
             user_id=current_user.id if current_user else None,
             payload=payload,
         )
@@ -551,12 +551,12 @@ async def generate_storyboard(
         return GenerationJobResponse(
             job_id=job.id,
             status=JobStatus.QUEUED,
-            project_id=project.id,
+            project_id=project_id,
             message="Storyboard generation started in background",
         )
 
     await run_storyboard_for_project(
-        project_id=project.id,
+        project_id=project_id,
         store=store,
         workflow=workflow,
         scene_numbers=scene_numbers,
@@ -566,7 +566,7 @@ async def generate_storyboard(
     project = await store.get(project_id)
 
     return StoryboardResponse(
-        project_id=project.id if project else project_id,
+        project_id=project_id if project else project_id,
         prompts=project.storyboard_prompts if project else [],
         total_prompts=len(project.storyboard_prompts) if project else 0,
     )
@@ -596,7 +596,7 @@ async def run_full_pipeline(
     store: ProjectStore = Depends(get_project_store),
     workflow: Workflow = Depends(get_workflow),
     current_user: Annotated[UserInDB | None, Depends(require_auth_if_enabled)] = None,
-    job_manager=Depends(get_job_manager),
+    job_manager: JobManager = Depends(get_job_manager),
 ) -> GenerationStatusResponse | GenerationJobResponse:
     """Run the full generation pipeline."""
     project = await store.get(project_id)
@@ -637,7 +637,7 @@ async def run_full_pipeline(
 
     async def _execute_pipeline() -> GenerationStatusResponse:
         return await run_pipeline_for_project(
-            project_id=project.id,
+            project_id=project_id,
             store=store,
             workflow=workflow,
             scene_numbers=scene_numbers,
@@ -663,7 +663,7 @@ async def run_full_pipeline(
                 return GenerationJobResponse(
                     job_id=existing_job_id,
                     status=JobStatus(existing_job.status) if existing_job else JobStatus.QUEUED,
-                    project_id=project.id,
+                    project_id=project_id,
                     message="Pipeline already queued",
                 )
         payload = encode_payload(
@@ -682,14 +682,14 @@ async def run_full_pipeline(
             await repo.create(
                 job_id=job_id,
                 status=JobStatus.QUEUED.value,
-                project_id=project.id,
+                project_id=project_id,
                 user_id=current_user.id if current_user else None,
                 description="full_pipeline",
                 payload=payload,
             )
             await enqueue_full_pipeline_job(
                 job_id=job_id,
-                project_id=project.id,
+                project_id=project_id,
                 scene_numbers=scene_numbers,
                 style=style,
                 skip_analysis=skip_analysis,
@@ -707,14 +707,14 @@ async def run_full_pipeline(
             return GenerationJobResponse(
                 job_id=job_id,
                 status=JobStatus.QUEUED,
-                project_id=project.id,
+                project_id=project_id,
                 message="Pipeline started in background",
             )
 
         repo = JobRepository()
         job = await job_manager.submit(
             lambda job_id: run_pipeline_for_project(
-                project_id=project.id,
+                project_id=project_id,
                 store=store,
                 workflow=workflow,
                 scene_numbers=scene_numbers,
@@ -726,7 +726,7 @@ async def run_full_pipeline(
                 job_id=job_id,
             ),
             description="full_pipeline",
-            project_id=project.id,
+            project_id=project_id,
             user_id=current_user.id if current_user else None,
             payload=payload,
         )
@@ -741,7 +741,7 @@ async def run_full_pipeline(
         return GenerationJobResponse(
             job_id=job.id,
             status=JobStatus.QUEUED,
-            project_id=project.id,
+            project_id=project_id,
             message="Pipeline started in background",
         )
 
@@ -789,7 +789,7 @@ async def get_generation_status(
             )
 
     return GenerationStatusResponse(
-        project_id=project.id,
+        project_id=project_id,
         status=project.status,
         progress=project.progress,
         current_step=project.current_step,

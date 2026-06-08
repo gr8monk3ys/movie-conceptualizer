@@ -71,7 +71,7 @@ from movie_conceptualizer.models.core import (
 )
 from movie_conceptualizer.parsers import load_text
 from movie_conceptualizer.storage import (
-    Database,
+    BaseDatabase,
     GenerationRepository,
     ProjectModel,
     ProjectRepository,
@@ -79,6 +79,7 @@ from movie_conceptualizer.storage import (
     get_database,
     init_database,
 )
+from movie_conceptualizer.storage.repositories import ProjectStatus as StorageProjectStatus
 
 __all__ = [
     # Project dependencies
@@ -399,7 +400,7 @@ class Project:
             description=model.description,
             genre=model.genre,
             style_notes=model.style_notes,
-            status=model.status,
+            status=ProjectStatus(model.status),
             created_at=model.created_at,
             updated_at=model.updated_at,
         )
@@ -419,8 +420,8 @@ class ProjectStore:
     but uses SQLite repositories for persistence.
     """
 
-    def __init__(self):
-        self._db: Database | None = None
+    def __init__(self) -> None:
+        self._db: BaseDatabase | None = None
         self._project_repo: ProjectRepository | None = None
         self._script_repo: ScriptRepository | None = None
         self._generation_repo: GenerationRepository | None = None
@@ -567,7 +568,7 @@ class ProjectStore:
             description=project.description,
             genre=project.genre,
             style_notes=project.style_notes,
-            status=project.status,
+            status=StorageProjectStatus(project.status),
             progress=project.progress,
             current_step=project.current_step,
             steps_completed=project.steps_completed,
@@ -618,9 +619,8 @@ class ProjectStore:
     ) -> None:
         """Save analysis results."""
         await self._ensure_initialized()
-        await self._generation_repo.save_analyses(  # type: ignore
-            project_id, analyses, overall_tone, visual_motifs
-        )
+        # api.schemas and storage models are parallel definitions with matching fields.
+        await self._generation_repo.save_analyses(project_id, analyses, overall_tone, visual_motifs)  # type: ignore[union-attr, arg-type]
 
     async def save_shots(
         self,
@@ -641,9 +641,8 @@ class ProjectStore:
     ) -> None:
         """Save storyboard prompts."""
         await self._ensure_initialized()
-        await self._generation_repo.save_storyboard(  # type: ignore
-            project_id, prompts, style, aspect_ratio
-        )
+        # api.schemas and storage models are parallel definitions with matching fields.
+        await self._generation_repo.save_storyboard(project_id, prompts, style, aspect_ratio)  # type: ignore[union-attr, arg-type]
 
 
 class MockWorkflow:
@@ -1056,12 +1055,12 @@ class RealWorkflow:
 
 
 # Global instances
-_database: Database | None = None
+_database: BaseDatabase | None = None
 _workflow: Workflow | None = None
 _project_store: ProjectStore | None = None
 
 
-async def get_db() -> AsyncIterator[Database]:
+async def get_db() -> AsyncIterator[BaseDatabase]:
     """Get the database instance (dependency injection).
 
     Initializes the database on first call.
@@ -1075,7 +1074,7 @@ async def get_db() -> AsyncIterator[Database]:
     yield _database
 
 
-def get_database_sync() -> Database:
+def get_database_sync() -> BaseDatabase:
     """Get the database instance synchronously.
 
     For use in dependency injection where async is not available.
@@ -1089,7 +1088,7 @@ def get_database_sync() -> Database:
     return _database
 
 
-def get_project_repository(db: Database | None = None) -> ProjectRepository:
+def get_project_repository(db: BaseDatabase | None = None) -> ProjectRepository:
     """Get the project repository instance.
 
     Args:
@@ -1101,7 +1100,7 @@ def get_project_repository(db: Database | None = None) -> ProjectRepository:
     return ProjectRepository(db or get_database_sync())
 
 
-def get_script_repository(db: Database | None = None) -> ScriptRepository:
+def get_script_repository(db: BaseDatabase | None = None) -> ScriptRepository:
     """Get the script repository instance.
 
     Args:
@@ -1113,7 +1112,7 @@ def get_script_repository(db: Database | None = None) -> ScriptRepository:
     return ScriptRepository(db or get_database_sync())
 
 
-def get_generation_repository(db: Database | None = None) -> GenerationRepository:
+def get_generation_repository(db: BaseDatabase | None = None) -> GenerationRepository:
     """Get the generation repository instance.
 
     Args:
