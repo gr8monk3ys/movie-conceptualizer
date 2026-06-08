@@ -7,6 +7,7 @@ through analysis, shot design, and storyboard creation stages.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator, Iterator
 from typing import Any, Literal
 
 from langgraph.checkpoint.memory import MemorySaver
@@ -443,7 +444,7 @@ def should_continue_after_shots(
 def create_pipeline_graph(
     enable_human_review: bool = False,
     use_async: bool = False,
-) -> StateGraph:
+) -> StateGraph[PipelineState, Any, Any, Any]:
     """Create the LangGraph StateGraph for the pipeline.
 
     Args:
@@ -541,7 +542,7 @@ def compile_pipeline(
     enable_human_review: bool = False,
     enable_checkpoints: bool = True,
     use_async: bool = False,
-):
+) -> Any:
     """Compile the pipeline graph into a runnable.
 
     Args:
@@ -649,7 +650,7 @@ def stream_pipeline(
     config: PipelineConfig | None = None,
     enable_human_review: bool = False,
     thread_id: str | None = None,
-):
+) -> Iterator[dict[str, Any]]:
     """Stream pipeline execution, yielding state after each node.
 
     Args:
@@ -683,7 +684,7 @@ async def astream_pipeline(
     config: PipelineConfig | None = None,
     enable_human_review: bool = False,
     thread_id: str | None = None,
-):
+) -> AsyncIterator[dict[str, Any]]:
     """Async stream pipeline execution.
 
     Args:

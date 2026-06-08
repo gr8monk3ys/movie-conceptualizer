@@ -255,9 +255,7 @@ class AnalyzedScript(BaseModel):
         default_factory=list, description="Main character descriptions for consistency"
     )
     overall_tone: EmotionalTone = Field(description="Overall tone of the script")
-    genre_hints: list[str] = Field(
-        default_factory=list, description="Detected genre elements"
-    )
+    genre_hints: list[str] = Field(default_factory=list, description="Detected genre elements")
 
     @field_validator("overall_tone", mode="before")
     @classmethod
@@ -286,27 +284,20 @@ class Shot(BaseModel):
     dialogue_covered: str | None = Field(
         default=None, description="Dialogue this shot covers, if any"
     )
-    action_covered: str | None = Field(
-        default=None, description="Action this shot covers, if any"
-    )
+    action_covered: str | None = Field(default=None, description="Action this shot covers, if any")
     emotional_purpose: str = Field(description="What emotion/purpose this shot serves")
 
     @field_validator("camera_movement", mode="before")
     @classmethod
     def _normalize_camera_movement(cls, value: object) -> CameraMovement:
         return _coerce_camera_movement(value)
+
     lighting_notes: str | None = Field(
         default=None, description="Specific lighting notes for this shot"
     )
-    composition_notes: str | None = Field(
-        default=None, description="Composition and framing notes"
-    )
-    transition_in: str | None = Field(
-        default=None, description="Transition from previous shot"
-    )
-    transition_out: str | None = Field(
-        default=None, description="Transition to next shot"
-    )
+    composition_notes: str | None = Field(default=None, description="Composition and framing notes")
+    transition_in: str | None = Field(default=None, description="Transition from previous shot")
+    transition_out: str | None = Field(default=None, description="Transition to next shot")
 
 
 class ShotList(BaseModel):
@@ -356,9 +347,7 @@ class StoryboardFrame(BaseModel):
     style_keywords: list[str] = Field(
         default_factory=list, description="Style keywords for image generation"
     )
-    negative_prompt: str | None = Field(
-        default=None, description="Things to avoid in generation"
-    )
+    negative_prompt: str | None = Field(default=None, description="Things to avoid in generation")
     generated_image_url: str | None = Field(
         default=None, description="URL of generated image, if available"
     )
@@ -368,12 +357,8 @@ class Storyboard(BaseModel):
     """Complete storyboard for a scene or script."""
 
     title: str = Field(description="Storyboard title")
-    scene_number: int | None = Field(
-        default=None, description="Scene number if for a single scene"
-    )
-    frames: list[StoryboardFrame] = Field(
-        default_factory=list, description="All storyboard frames"
-    )
+    scene_number: int | None = Field(default=None, description="Scene number if for a single scene")
+    frames: list[StoryboardFrame] = Field(default_factory=list, description="All storyboard frames")
     style_guide: str | None = Field(
         default=None, description="Overall style guide for the storyboard"
     )

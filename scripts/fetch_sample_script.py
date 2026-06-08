@@ -13,7 +13,6 @@ from pathlib import Path
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
-
 ALLOWED_EXTENSIONS = {".fountain", ".fdx", ".txt"}
 
 
@@ -52,8 +51,7 @@ def main() -> int:
     ext = _ext_from_url(args.url)
     if ext not in ALLOWED_EXTENSIONS and not args.allow_unknown_ext:
         print(
-            "Error: URL must end with .fountain, .fdx, or .txt "
-            f"(got '{ext or 'none'}').",
+            f"Error: URL must end with .fountain, .fdx, or .txt (got '{ext or 'none'}').",
             file=sys.stderr,
         )
         return 2

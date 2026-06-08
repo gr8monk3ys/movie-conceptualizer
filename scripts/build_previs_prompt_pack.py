@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Build a previs prompt pack from storyboard exports."""
+
 from __future__ import annotations
 
 import argparse

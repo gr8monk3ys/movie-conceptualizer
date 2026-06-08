@@ -34,23 +34,17 @@ class StoryboardFrameOutput(BaseModel):
     character_positions: str | None = Field(
         default=None, description="Where characters are positioned in frame"
     )
-    action_description: str | None = Field(
-        default=None, description="What action is happening"
-    )
+    action_description: str | None = Field(default=None, description="What action is happening")
     style_keywords: list[str] = Field(
         default_factory=list, description="Style keywords for image generation"
     )
-    negative_prompt: str | None = Field(
-        default=None, description="Things to avoid in generation"
-    )
+    negative_prompt: str | None = Field(default=None, description="Things to avoid in generation")
 
 
 class StoryboardFramesOutput(BaseModel):
     """Output schema for multiple storyboard frames."""
 
-    frames: list[StoryboardFrameOutput] = Field(
-        description="List of storyboard frame outputs"
-    )
+    frames: list[StoryboardFrameOutput] = Field(description="List of storyboard frame outputs")
     style_guide: str | None = Field(
         default=None, description="Overall style guide for the storyboard"
     )
@@ -390,8 +384,7 @@ Pacing: {analyzed_scene.pacing.value}
 
         # Build character reference notes
         char_ref_notes = "\n".join(
-            f"- {char.name}: {char.physical_description}"
-            for char in character_descriptions
+            f"- {char.name}: {char.physical_description}" for char in character_descriptions
         )
 
         return Storyboard(
@@ -442,8 +435,7 @@ Pacing: {analyzed_scene.pacing.value}
         frames = list(await asyncio.gather(*tasks))
 
         char_ref_notes = "\n".join(
-            f"- {char.name}: {char.physical_description}"
-            for char in character_descriptions
+            f"- {char.name}: {char.physical_description}" for char in character_descriptions
         )
 
         return Storyboard(
@@ -509,9 +501,7 @@ Pacing: {analyzed_scene.pacing.value}
             analyzed_scene = scene_map.get(shot_list.scene_number)
             if analyzed_scene:
                 tasks.append(
-                    self.acreate_storyboard_for_scene(
-                        shot_list, analyzed_scene, style_guide
-                    )
+                    self.acreate_storyboard_for_scene(shot_list, analyzed_scene, style_guide)
                 )
 
         return list(await asyncio.gather(*tasks))
@@ -550,9 +540,7 @@ Pacing: {analyzed_scene.pacing.value}
         Returns:
             A Storyboard for the scene
         """
-        return await self.acreate_storyboard_for_scene(
-            shot_list, analyzed_scene, style_guide
-        )
+        return await self.acreate_storyboard_for_scene(shot_list, analyzed_scene, style_guide)
 
 
 # Convenience functions for direct use
@@ -599,6 +587,4 @@ async def acreate_storyboard(
         The storyboard for the scene
     """
     agent = StoryboardArtistAgent(model_name=model_name, temperature=temperature)
-    return await agent.acreate_storyboard_for_scene(
-        shot_list, analyzed_scene, style_guide
-    )
+    return await agent.acreate_storyboard_for_scene(shot_list, analyzed_scene, style_guide)

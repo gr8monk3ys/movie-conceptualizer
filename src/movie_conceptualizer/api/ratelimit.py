@@ -12,13 +12,17 @@ Configuration is done via environment variables:
 
 import logging
 import os
-from typing import Callable, Optional
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Optional
 
 from fastapi import Request, Response
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 from starlette.responses import JSONResponse
+
+if TYPE_CHECKING:
+    from redis import Redis
 
 logger = logging.getLogger(__name__)
 
@@ -128,8 +132,7 @@ def _try_create_redis_limiter() -> tuple[Limiter, bool, str]:
         )
     except Exception as e:
         logger.warning(
-            f"Failed to connect to Redis at {REDIS_URL}: {e}. "
-            "Falling back to in-memory storage."
+            f"Failed to connect to Redis at {REDIS_URL}: {e}. Falling back to in-memory storage."
         )
 
     # Fallback to in-memory

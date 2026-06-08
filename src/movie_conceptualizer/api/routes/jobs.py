@@ -1,30 +1,26 @@
 """Background job status API routes."""
 
-from typing import Annotated
-
-from datetime import datetime, timedelta, timezone
 import csv
 import io
+import os
+from datetime import UTC, datetime, timedelta
+from typing import Annotated
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status as http_status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi import status as http_status
 
-import os
-
-from movie_conceptualizer.api.jobs import get_job_manager
+from movie_conceptualizer.api.arq_queue import (
+    enqueue_analysis_job,
+    enqueue_full_pipeline_job,
+    enqueue_shots_job,
+    enqueue_storyboard_job,
+)
 from movie_conceptualizer.api.dependencies import (
     UserInDB,
     is_admin_user,
     require_admin_access,
     require_auth_if_enabled,
-)
-from movie_conceptualizer.api.ratelimit import DEFAULT_RATE_LIMIT, limiter
-from movie_conceptualizer.api.schemas import (
-    ErrorResponse,
-    JobListResponse,
-    JobMetricsResponse,
-    JobStatus,
-    JobStatusResponse,
 )
 from movie_conceptualizer.api.job_payloads import (
     AnalysisJobPayload,
@@ -33,13 +29,19 @@ from movie_conceptualizer.api.job_payloads import (
     StoryboardJobPayload,
     decode_payload,
 )
-from movie_conceptualizer.storage import JobAuditLogRepository, JobIdempotencyRepository, JobRepository
-
-from movie_conceptualizer.api.arq_queue import (
-    enqueue_analysis_job,
-    enqueue_full_pipeline_job,
-    enqueue_shots_job,
-    enqueue_storyboard_job,
+from movie_conceptualizer.api.jobs import get_job_manager
+from movie_conceptualizer.api.ratelimit import DEFAULT_RATE_LIMIT, limiter
+from movie_conceptualizer.api.schemas import (
+    ErrorResponse,
+    JobListResponse,
+    JobMetricsResponse,
+    JobStatus,
+    JobStatusResponse,
+)
+from movie_conceptualizer.storage import (
+    JobAuditLogRepository,
+    JobIdempotencyRepository,
+    JobRepository,
 )
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
@@ -50,8 +52,8 @@ JOB_AUDIT_SCHEMA_VERSION = 1
 def _format_datetime(value: datetime) -> str:
     """Format datetime consistently in UTC."""
     if value.tzinfo is None:
-        value = value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+        value = value.replace(tzinfo=UTC)
+    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
 @router.get(
@@ -177,40 +179,40 @@ async def retry_job(
     await repo.reset_job(job_id)
 
     if description == "analysis":
-        parsed = AnalysisJobPayload.model_validate(payload)
+        analysis_parsed = AnalysisJobPayload.model_validate(payload)
         await enqueue_analysis_job(
             job_id=job_id,
             project_id=job.project_id,
-            scene_numbers=parsed.scene_numbers,
+            scene_numbers=analysis_parsed.scene_numbers,
         )
     elif description == "shots":
-        parsed = ShotsJobPayload.model_validate(payload)
+        shots_parsed = ShotsJobPayload.model_validate(payload)
         await enqueue_shots_job(
             job_id=job_id,
             project_id=job.project_id,
-            scene_numbers=parsed.scene_numbers,
-            style=parsed.style,
-            shots_per_scene=parsed.shots_per_scene,
+            scene_numbers=shots_parsed.scene_numbers,
+            style=shots_parsed.style,
+            shots_per_scene=shots_parsed.shots_per_scene,
         )
     elif description == "storyboard":
-        parsed = StoryboardJobPayload.model_validate(payload)
+        storyboard_parsed = StoryboardJobPayload.model_validate(payload)
         await enqueue_storyboard_job(
             job_id=job_id,
             project_id=job.project_id,
-            scene_numbers=parsed.scene_numbers,
-            style=parsed.style,
-            aspect_ratio=parsed.aspect_ratio,
+            scene_numbers=storyboard_parsed.scene_numbers,
+            style=storyboard_parsed.style,
+            aspect_ratio=storyboard_parsed.aspect_ratio,
         )
     else:
-        parsed = PipelineJobPayload.model_validate(payload)
+        pipeline_parsed = PipelineJobPayload.model_validate(payload)
         await enqueue_full_pipeline_job(
             job_id=job_id,
             project_id=job.project_id,
-            scene_numbers=parsed.scene_numbers,
-            style=parsed.style,
-            skip_analysis=parsed.skip_analysis,
-            skip_shots=parsed.skip_shots,
-            skip_storyboard=parsed.skip_storyboard,
+            scene_numbers=pipeline_parsed.scene_numbers,
+            style=pipeline_parsed.style,
+            skip_analysis=pipeline_parsed.skip_analysis,
+            skip_shots=pipeline_parsed.skip_shots,
+            skip_storyboard=pipeline_parsed.skip_storyboard,
         )
 
     audit_repo = JobAuditLogRepository()
@@ -269,40 +271,40 @@ async def replay_dead_letter_jobs(
         )
 
         if description == "analysis":
-            parsed = AnalysisJobPayload.model_validate(payload)
+            analysis_parsed = AnalysisJobPayload.model_validate(payload)
             await enqueue_analysis_job(
                 job_id=job_id,
                 project_id=project_id,
-                scene_numbers=parsed.scene_numbers,
+                scene_numbers=analysis_parsed.scene_numbers,
             )
         elif description == "shots":
-            parsed = ShotsJobPayload.model_validate(payload)
+            shots_parsed = ShotsJobPayload.model_validate(payload)
             await enqueue_shots_job(
                 job_id=job_id,
                 project_id=project_id,
-                scene_numbers=parsed.scene_numbers,
-                style=parsed.style,
-                shots_per_scene=parsed.shots_per_scene,
+                scene_numbers=shots_parsed.scene_numbers,
+                style=shots_parsed.style,
+                shots_per_scene=shots_parsed.shots_per_scene,
             )
         elif description == "storyboard":
-            parsed = StoryboardJobPayload.model_validate(payload)
+            storyboard_parsed = StoryboardJobPayload.model_validate(payload)
             await enqueue_storyboard_job(
                 job_id=job_id,
                 project_id=project_id,
-                scene_numbers=parsed.scene_numbers,
-                style=parsed.style,
-                aspect_ratio=parsed.aspect_ratio,
+                scene_numbers=storyboard_parsed.scene_numbers,
+                style=storyboard_parsed.style,
+                aspect_ratio=storyboard_parsed.aspect_ratio,
             )
         else:
-            parsed = PipelineJobPayload.model_validate(payload)
+            pipeline_parsed = PipelineJobPayload.model_validate(payload)
             await enqueue_full_pipeline_job(
                 job_id=job_id,
                 project_id=project_id,
-                scene_numbers=parsed.scene_numbers,
-                style=parsed.style,
-                skip_analysis=parsed.skip_analysis,
-                skip_shots=parsed.skip_shots,
-                skip_storyboard=parsed.skip_storyboard,
+                scene_numbers=pipeline_parsed.scene_numbers,
+                style=pipeline_parsed.style,
+                skip_analysis=pipeline_parsed.skip_analysis,
+                skip_shots=pipeline_parsed.skip_shots,
+                skip_storyboard=pipeline_parsed.skip_storyboard,
             )
 
         created_jobs.append(job_id)
@@ -360,16 +362,12 @@ async def purge_jobs(
     older_than_days: int | None = Query(
         30, ge=1, le=3650, description="Purge jobs older than N days"
     ),
-    include_dead_letter: bool = Query(
-        False, description="Also purge dead-letter records"
-    ),
+    include_dead_letter: bool = Query(False, description="Also purge dead-letter records"),
     current_user: Annotated[UserInDB, Depends(require_admin_access)] = None,
 ):
     repo = JobRepository()
     older_than = (
-        datetime.now(timezone.utc) - timedelta(days=older_than_days)
-        if older_than_days is not None
-        else None
+        datetime.now(UTC) - timedelta(days=older_than_days) if older_than_days is not None else None
     )
     deleted_jobs = await repo.purge_jobs(status=status, older_than=older_than)
     deleted_dead = 0
@@ -460,7 +458,7 @@ async def list_job_audit_logs(
 
     normalized_format = format.strip().lower()
     if normalized_format == "csv":
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         output = io.StringIO()
         writer = csv.writer(output)
         writer.writerow(
@@ -477,17 +475,19 @@ async def list_job_audit_logs(
             ]
         )
         for log in logs:
-            writer.writerow([
-                JOB_AUDIT_SCHEMA_VERSION,
-                log.id,
-                log.actor_user_id,
-                log.action,
-                log.target_job_id,
-                log.metadata,
-                log.prev_hash,
-                log.hash,
-                _format_datetime(log.created_at),
-            ])
+            writer.writerow(
+                [
+                    JOB_AUDIT_SCHEMA_VERSION,
+                    log.id,
+                    log.actor_user_id,
+                    log.action,
+                    log.target_job_id,
+                    log.metadata,
+                    log.prev_hash,
+                    log.hash,
+                    _format_datetime(log.created_at),
+                ]
+            )
         return Response(
             content=output.getvalue(),
             media_type="text/csv",
@@ -521,13 +521,11 @@ async def list_job_audit_logs(
 async def purge_job_audit_logs(
     request: Request,
     response: Response,
-    older_than_days: int = Query(
-        30, ge=1, le=3650, description="Purge logs older than N days"
-    ),
+    older_than_days: int = Query(30, ge=1, le=3650, description="Purge logs older than N days"),
     current_user: Annotated[UserInDB, Depends(require_admin_access)] = None,
 ):
     repo = JobAuditLogRepository()
-    older_than = datetime.now(timezone.utc) - timedelta(days=older_than_days)
+    older_than = datetime.now(UTC) - timedelta(days=older_than_days)
     deleted = await repo.purge(older_than=older_than)
     return {"deleted": deleted, "older_than_days": older_than_days}
 

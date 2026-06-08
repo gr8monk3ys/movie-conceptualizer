@@ -306,7 +306,7 @@ Rollback strategy:
 - PostgreSQL: restore a `pg_dump` snapshot taken before migration.
 
 ```bash
-# Run tests (109 tests)
+# Run tests (120 tests)
 uv run pytest
 
 # Type checking

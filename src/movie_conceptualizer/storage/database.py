@@ -19,10 +19,10 @@ import sqlite3
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
-from datetime import datetime, timezone
 
 import aiosqlite
 
@@ -32,16 +32,17 @@ if TYPE_CHECKING:
 
 def _configure_sqlite_datetime() -> None:
     """Register adapters/converters for timezone-aware datetimes in SQLite."""
+
     def _adapt_datetime(value: datetime) -> str:
         if value.tzinfo is None:
-            value = value.replace(tzinfo=timezone.utc)
-        return value.astimezone(timezone.utc).isoformat()
+            value = value.replace(tzinfo=UTC)
+        return value.astimezone(UTC).isoformat()
 
     def _convert_datetime(raw: bytes) -> datetime:
         text = raw.decode("utf-8")
         parsed = datetime.fromisoformat(text)
         if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=timezone.utc)
+            parsed = parsed.replace(tzinfo=UTC)
         return parsed
 
     sqlite3.register_adapter(datetime, _adapt_datetime)
@@ -962,9 +963,7 @@ class SQLiteDatabase(BaseDatabase):
             if await cursor.fetchone() is None:
                 return 0
 
-            cursor = await conn.execute(
-                "SELECT MAX(version) FROM schema_version"
-            )
+            cursor = await conn.execute("SELECT MAX(version) FROM schema_version")
             row = await cursor.fetchone()
             return row[0] if row and row[0] is not None else 0
         except Exception:
@@ -1006,7 +1005,10 @@ class SQLiteDatabase(BaseDatabase):
                     if not statement:
                         continue
 
-                    if statement.upper().startswith("ALTER TABLE") and " ADD COLUMN " in statement.upper():
+                    if (
+                        statement.upper().startswith("ALTER TABLE")
+                        and " ADD COLUMN " in statement.upper()
+                    ):
                         parts = statement.split()
                         # ALTER TABLE <table> ADD COLUMN <column>
                         if len(parts) >= 6:
@@ -1018,10 +1020,7 @@ class SQLiteDatabase(BaseDatabase):
                     await conn.execute(statement)
 
             # Record the migration
-            await conn.execute(
-                "INSERT INTO schema_version (version) VALUES (?)",
-                (version,)
-            )
+            await conn.execute("INSERT INTO schema_version (version) VALUES (?)", (version,))
         except Exception as e:
             raise MigrationError(f"Migration to version {version} failed: {e}") from e
 
@@ -1199,9 +1198,7 @@ class PostgreSQLDatabase(BaseDatabase):
             if not result:
                 return 0
 
-            version = await conn.fetchval(
-                "SELECT MAX(version) FROM schema_version"
-            )
+            version = await conn.fetchval("SELECT MAX(version) FROM schema_version")
             return version if version is not None else 0
         except Exception:
             return 0
@@ -1235,10 +1232,7 @@ class PostgreSQLDatabase(BaseDatabase):
                         await conn.execute(statement)
 
             # Record the migration
-            await conn.execute(
-                "INSERT INTO schema_version (version) VALUES ($1)",
-                version
-            )
+            await conn.execute("INSERT INTO schema_version (version) VALUES ($1)", version)
         except Exception as e:
             raise MigrationError(f"Migration to version {version} failed: {e}") from e
 

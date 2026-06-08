@@ -3,7 +3,7 @@
 import asyncio
 import json
 import shutil
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import typer
@@ -54,7 +54,7 @@ def parse(
     table.add_row("Scenes", str(summary["scene_count"]))
     table.add_row("Characters", str(summary["character_count"]))
     table.add_row("Locations", str(summary["location_count"]))
-    table.add_row("Est. Pages", f"{summary['total_page_count']:.1f}")
+    table.add_row("Est. Pages", f"{summary['total_pages']:.1f}")
     table.add_row("Est. Runtime", f"{summary['estimated_runtime_minutes']:.0f} min")
 
     console.print(table)
@@ -67,7 +67,7 @@ def parse(
     if verbose:
         console.print("\n[bold]Scenes:[/bold]")
         for scene in script.scenes:
-            console.print(f"  {scene.scene_number}. {scene.slugline}")
+            console.print(f"  {scene.scene_number}. {scene.heading}")
 
         console.print("\n[bold]Characters:[/bold]")
         for char in script.characters:
@@ -129,7 +129,7 @@ def db_backup(
         console.print(f"[red]Error:[/red] Database file not found: {db_path}")
         raise typer.Exit(1)
 
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     backup_path = output or db_path.with_name(f"{db_path.stem}_backup_{timestamp}{db_path.suffix}")
     backup_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(db_path, backup_path)
@@ -172,16 +172,19 @@ def analyze(
     console.print("\n[bold green]✓ Analysis Complete[/bold green]\n")
 
     for analyzed in analyzed_scenes:
-        panel_content = f"""[cyan]Emotional Beat:[/cyan] {analyzed.emotional_beat.value if hasattr(analyzed.emotional_beat, 'value') else analyzed.emotional_beat}
-[cyan]Tone:[/cyan] {analyzed.tone.value if hasattr(analyzed.tone, 'value') else analyzed.tone}
-[cyan]Pacing:[/cyan] {analyzed.pacing.value if hasattr(analyzed.pacing, 'value') else analyzed.pacing}
-[cyan]Visual Notes:[/cyan] {analyzed.visual_notes or 'N/A'}"""
+        panel_content = f"""[cyan]Tone:[/cyan] {analyzed.overall_tone.value}
+[cyan]Pacing:[/cyan] {analyzed.pacing.value}
+[cyan]Emotional Beats:[/cyan] {len(analyzed.emotional_beats)}
+[cyan]Summary:[/cyan] {analyzed.summary}
+[cyan]Atmosphere:[/cyan] {analyzed.scene_atmosphere or "N/A"}"""
 
-        console.print(Panel(
-            panel_content,
-            title=f"Scene {analyzed.scene_number}: {analyzed.slugline[:50]}",
-            border_style="blue",
-        ))
+        console.print(
+            Panel(
+                panel_content,
+                title=f"Scene {analyzed.scene_number}: {analyzed.scene_heading[:50]}",
+                border_style="blue",
+            )
+        )
 
     if output:
         output_data = {"scenes": [s.model_dump() for s in analyzed_scenes]}
@@ -222,7 +225,7 @@ def shots(
             # First analyze
             analyzed = analyzer.analyze_scene(scene)
             # Then design shots
-            shot_list = shot_designer.design_shots(scene, analyzed)
+            shot_list = shot_designer.design_shot_list(analyzed)
             all_shot_lists.append(shot_list)
             progress.advance(task)
 
@@ -240,10 +243,14 @@ def shots(
         table.add_column("Description", style="white")
 
         for shot in shot_list.shots:
-            movement = shot.camera_movement.value if hasattr(shot.camera_movement, 'value') else (shot.camera_movement or "STATIC")
-            shot_type = shot.shot_type.value if hasattr(shot.shot_type, 'value') else shot.shot_type
+            movement = (
+                shot.camera_movement.value
+                if hasattr(shot.camera_movement, "value")
+                else (shot.camera_movement or "STATIC")
+            )
+            shot_type = shot.shot_type.value if hasattr(shot.shot_type, "value") else shot.shot_type
             table.add_row(
-                shot.shot_number,
+                str(shot.shot_number),
                 shot_type,
                 movement,
                 shot.description[:60] + "..." if len(shot.description) > 60 else shot.description,
@@ -296,8 +303,8 @@ def storyboard(
 
         for scene in script.scenes:
             analyzed = analyzer.analyze_scene(scene)
-            shot_list = shot_designer.design_shots(scene, analyzed)
-            storyboard = storyboard_artist.create_storyboard(
+            shot_list = shot_designer.design_shot_list(analyzed)
+            storyboard = storyboard_artist.create_storyboard_for_scene(
                 shot_list, analyzed, style_guide=style
             )
             all_frames.extend(storyboard.frames)
@@ -308,11 +315,13 @@ def storyboard(
     console.print(f"[bold]Total Frames:[/bold] {len(all_frames)}\n")
 
     for i, frame in enumerate(all_frames[:10], 1):  # Show first 10
-        console.print(Panel(
-            frame.image_prompt,
-            title=f"Frame {i}: Shot {frame.shot_id}",
-            border_style="magenta",
-        ))
+        console.print(
+            Panel(
+                frame.image_prompt,
+                title=f"Frame {i}: Shot {frame.shot_id}",
+                border_style="magenta",
+            )
+        )
 
     if len(all_frames) > 10:
         console.print(f"\n[dim]... and {len(all_frames) - 10} more frames[/dim]")
@@ -342,15 +351,17 @@ def pipeline(
 
     script = load_script(str(script_path))
 
-    console.print(Panel(
-        f"[bold]{script.title or 'Untitled'}[/bold]\n\n"
-        f"Scenes: {len(script.scenes)}\n"
-        f"Characters: {len(script.characters)}\n"
-        f"Model: {model}\n"
-        f"Style: {style}",
-        title="🎬 Movie Conceptualizer Pipeline",
-        border_style="green",
-    ))
+    console.print(
+        Panel(
+            f"[bold]{script.title or 'Untitled'}[/bold]\n\n"
+            f"Scenes: {len(script.scenes)}\n"
+            f"Characters: {len(script.characters)}\n"
+            f"Model: {model}\n"
+            f"Style: {style}",
+            title="🎬 Movie Conceptualizer Pipeline",
+            border_style="green",
+        )
+    )
 
     config = PipelineConfig(
         model_name=model,
@@ -411,13 +422,15 @@ def serve(
     """Start the API server."""
     import uvicorn
 
-    console.print(Panel(
-        f"Starting server at [bold]http://{host}:{port}[/bold]\n\n"
-        f"API docs: http://{host}:{port}/docs\n"
-        f"Health: http://{host}:{port}/health",
-        title="🎬 Movie Conceptualizer API",
-        border_style="green",
-    ))
+    console.print(
+        Panel(
+            f"Starting server at [bold]http://{host}:{port}[/bold]\n\n"
+            f"API docs: http://{host}:{port}/docs\n"
+            f"Health: http://{host}:{port}/health",
+            title="🎬 Movie Conceptualizer API",
+            border_style="green",
+        )
+    )
 
     uvicorn.run(
         "movie_conceptualizer.api.main:app",

@@ -1,16 +1,17 @@
 """FastAPI application for Movie Conceptualizer API."""
 
+import logging
 import os
-from datetime import datetime, timezone
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 
-import logging
-
+from movie_conceptualizer.api.arq_queue import get_queue_health
+from movie_conceptualizer.api.auth import ADMIN_POLICY, ADMIN_USERS, ALLOWED_ROLES
 from movie_conceptualizer.api.logging_utils import (
     RequestLogger,
     configure_logging,
@@ -18,7 +19,6 @@ from movie_conceptualizer.api.logging_utils import (
     now_ms,
     request_id_var,
 )
-from movie_conceptualizer.api.arq_queue import get_queue_health
 from movie_conceptualizer.api.ratelimit import (
     DEFAULT_RATE_LIMIT,
     check_redis_health,
@@ -36,7 +36,6 @@ from movie_conceptualizer.api.routes import (
     projects_router,
     scripts_router,
 )
-from movie_conceptualizer.api.auth import ADMIN_POLICY, ADMIN_USERS, ALLOWED_ROLES
 from movie_conceptualizer.storage import JobRepository
 
 # Auth configuration
@@ -102,6 +101,7 @@ API_VERSION = "0.1.0"
 
 # Configure logging early
 configure_logging()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -180,7 +180,9 @@ async def validate_config() -> None:
         if ADMIN_POLICY == "env" and not ADMIN_USERS:
             issues.append("MOVIECON_ADMIN_USERS must be set when admin policy is 'env'.")
         if ADMIN_POLICY == "role" and "admin" not in ALLOWED_ROLES:
-            issues.append("MOVIECON_ALLOWED_ROLES must include 'admin' when admin policy is 'role'.")
+            issues.append(
+                "MOVIECON_ALLOWED_ROLES must include 'admin' when admin policy is 'role'."
+            )
         if not ALLOWED_ROLES:
             issues.append("MOVIECON_ALLOWED_ROLES must include at least one role.")
 
@@ -266,14 +268,16 @@ async def root(request: Request) -> dict:
 @limiter.exempt
 async def metrics_endpoint():
     if not METRICS_ENABLED:
-        return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content={"detail": "Metrics disabled"})
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND, content={"detail": "Metrics disabled"}
+        )
 
     job_repo = JobRepository()
     job_metrics = await job_repo.get_metrics()
     request_metrics = get_request_metrics()
 
     return {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "requests": request_metrics,
         "jobs": job_metrics,
     }
@@ -290,7 +294,7 @@ async def health_check() -> dict:
     """Health check endpoint."""
     health_response = {
         "status": "healthy",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "version": API_VERSION,
         "rate_limiting": {
             "backend": get_backend_type(),
@@ -330,7 +334,7 @@ async def redis_health_check() -> dict:
     rate_limit_info = get_rate_limit_status()
 
     return {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "redis": redis_health,
         "rate_limiting": {
             "configured_backend": rate_limit_info["configured_backend"],

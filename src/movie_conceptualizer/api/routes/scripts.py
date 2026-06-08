@@ -1,12 +1,21 @@
 """Script handling API routes."""
 
-from typing import Annotated
 import os
 import shutil
 import subprocess
 import tempfile
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
 
 from movie_conceptualizer.api.dependencies import (
     ProjectStore,
@@ -17,21 +26,21 @@ from movie_conceptualizer.api.dependencies import (
     is_admin_user,
     require_auth_if_enabled,
 )
-from movie_conceptualizer.parsers import (
-    ScriptLoadError,
-    coerce_pdf_text_to_fountain,
-    extract_text_from_pdf_bytes,
-)
 from movie_conceptualizer.api.jobs import get_job_manager
-from movie_conceptualizer.api.schemas import GenerationJobResponse, JobStatus
-from movie_conceptualizer.storage import JobRepository
 from movie_conceptualizer.api.ratelimit import DEFAULT_RATE_LIMIT, limiter
 from movie_conceptualizer.api.schemas import (
     ErrorResponse,
+    GenerationJobResponse,
+    JobStatus,
     ParseScriptRequest,
     ProjectStatus,
     ScriptResponse,
     UploadScriptRequest,
+)
+from movie_conceptualizer.parsers import (
+    ScriptLoadError,
+    coerce_pdf_text_to_fountain,
+    extract_text_from_pdf_bytes,
 )
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["scripts"])

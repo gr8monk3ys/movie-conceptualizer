@@ -67,4 +67,3 @@ def parse_fdx(text: str) -> Script:
     script.format_type = "fdx"
     script.raw_text = fountain_text
     return script
-

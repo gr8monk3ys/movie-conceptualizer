@@ -8,10 +8,16 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import AsyncIterator, Iterable
-from datetime import datetime, timezone
 import re
+from collections.abc import AsyncIterator, Iterable
+from datetime import UTC, datetime
 from typing import Any, Protocol, runtime_checkable
+
+from movie_conceptualizer.agents import (
+    ScriptAnalyzerAgent,
+    ShotDesignerAgent,
+    StoryboardArtistAgent,
+)
 
 # Re-export auth dependencies for convenience
 from movie_conceptualizer.api.auth import (
@@ -23,8 +29,8 @@ from movie_conceptualizer.api.auth import (
     get_optional_current_user,
     get_user_store,
     is_admin_user,
-    require_auth_if_enabled,
     require_admin_access,
+    require_auth_if_enabled,
 )
 from movie_conceptualizer.api.schemas import (
     CameraMovement,
@@ -37,12 +43,22 @@ from movie_conceptualizer.api.schemas import (
 )
 from movie_conceptualizer.models.analysis import (
     AnalyzedScene,
-    CameraAngle as AnalysisCameraAngle,
-    CameraMovement as AnalysisCameraMovement,
     EmotionalTone,
     PacingType,
+)
+from movie_conceptualizer.models.analysis import (
+    CameraAngle as AnalysisCameraAngle,
+)
+from movie_conceptualizer.models.analysis import (
+    CameraMovement as AnalysisCameraMovement,
+)
+from movie_conceptualizer.models.analysis import (
     Shot as AnalysisShot,
+)
+from movie_conceptualizer.models.analysis import (
     ShotList as AnalysisShotList,
+)
+from movie_conceptualizer.models.analysis import (
     ShotType as AnalysisShotType,
 )
 from movie_conceptualizer.models.core import (
@@ -54,11 +70,6 @@ from movie_conceptualizer.models.core import (
     TimeOfDay,
 )
 from movie_conceptualizer.parsers import load_text
-from movie_conceptualizer.agents import (
-    ScriptAnalyzerAgent,
-    ShotDesignerAgent,
-    StoryboardArtistAgent,
-)
 from movie_conceptualizer.storage import (
     Database,
     GenerationRepository,
@@ -108,13 +119,11 @@ class Workflow(Protocol):
 
     async def parse_script(
         self, content: str, format: str = "fountain"
-    ) -> tuple[list[SceneData], str | None, str | None]:
-        ...
+    ) -> tuple[list[SceneData], str | None, str | None]: ...
 
     async def analyze_scenes(
         self, scenes: list[SceneData], genre: str | None = None
-    ) -> tuple[list[SceneAnalysis], str | None, list[str]]:
-        ...
+    ) -> tuple[list[SceneAnalysis], str | None, list[str]]: ...
 
     async def generate_shots(
         self,
@@ -122,8 +131,7 @@ class Workflow(Protocol):
         analyses: list[SceneAnalysis] | None = None,
         style: str | None = None,
         shots_per_scene: int | None = None,
-    ) -> list[ShotData]:
-        ...
+    ) -> list[ShotData]: ...
 
     async def generate_storyboard_prompts(
         self,
@@ -132,8 +140,7 @@ class Workflow(Protocol):
         aspect_ratio: str = "16:9",
         scenes: list[SceneData] | None = None,
         analyses: list[SceneAnalysis] | None = None,
-    ) -> list[StoryboardPrompt]:
-        ...
+    ) -> list[StoryboardPrompt]: ...
 
 
 def _scene_to_scene_data(scene: Scene) -> SceneData:
@@ -317,8 +324,8 @@ class Project:
         self.genre = genre
         self.style_notes = style_notes
         self.status = status
-        self.created_at = created_at or datetime.now(timezone.utc)
-        self.updated_at = updated_at or datetime.now(timezone.utc)
+        self.created_at = created_at or datetime.now(UTC)
+        self.updated_at = updated_at or datetime.now(UTC)
 
         # Script data
         self.script_content: str | None = None
@@ -348,7 +355,7 @@ class Project:
 
     def update(self) -> None:
         """Update the timestamp."""
-        self.updated_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(UTC)
 
     @property
     def has_script(self) -> bool:
@@ -534,9 +541,7 @@ class ProjectStore:
         await self._ensure_initialized()
         return await self._project_repo.assign_owner(project_id, user_id)  # type: ignore
 
-    async def bulk_assign_owner(
-        self, user_id: str, only_unassigned: bool = True
-    ) -> int:
+    async def bulk_assign_owner(self, user_id: str, only_unassigned: bool = True) -> int:
         """Bulk assign owners to projects."""
         await self._ensure_initialized()
         return await self._project_repo.bulk_assign_owner(user_id, only_unassigned)  # type: ignore
@@ -934,9 +939,7 @@ class RealWorkflow:
                     ShotData(
                         shot_number=str(shot.shot_id or shot.shot_number),
                         scene_number=shot_list.scene_number,
-                        shot_type=_ANALYSIS_TO_API_SHOT_TYPE.get(
-                            shot.shot_type, ShotType.MEDIUM
-                        ),
+                        shot_type=_ANALYSIS_TO_API_SHOT_TYPE.get(shot.shot_type, ShotType.MEDIUM),
                         camera_movement=_ANALYSIS_TO_API_MOVEMENT.get(
                             shot.camera_movement, CameraMovement.STATIC
                         ),
@@ -1154,7 +1157,6 @@ def get_workflow() -> Workflow:
             _workflow = RealWorkflow()
         else:
             raise RuntimeError(
-                f"Unknown MOVIECON_WORKFLOW_BACKEND='{backend}'. "
-                "Valid options: 'mock', 'real'."
+                f"Unknown MOVIECON_WORKFLOW_BACKEND='{backend}'. Valid options: 'mock', 'real'."
             )
     return _workflow

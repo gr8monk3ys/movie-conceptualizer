@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 from abc import ABC, abstractmethod
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -180,10 +180,12 @@ class BaseAgent(ABC):
         Returns:
             A configured ChatPromptTemplate
         """
-        return ChatPromptTemplate.from_messages([
-            ("system", self.system_prompt),
-            ("human", user_template),
-        ])
+        return ChatPromptTemplate.from_messages(
+            [
+                ("system", self.system_prompt),
+                ("human", user_template),
+            ]
+        )
 
     def generate_structured_output(
         self,
@@ -225,7 +227,7 @@ class BaseAgent(ABC):
                 "The LLM response could not be parsed into the expected schema."
             )
 
-        return result
+        return cast(T, result)
 
     async def agenerate_structured_output(
         self,
@@ -264,7 +266,7 @@ class BaseAgent(ABC):
                 "The LLM response could not be parsed into the expected schema."
             )
 
-        return result
+        return cast(T, result)
 
     def generate_text(self, user_prompt: str, **kwargs: Any) -> str:
         """Generate a plain text response from the LLM.
@@ -282,7 +284,7 @@ class BaseAgent(ABC):
         ]
 
         response = self.llm.invoke(messages)
-        return response.content
+        return cast(str, response.content)
 
     async def agenerate_text(self, user_prompt: str, **kwargs: Any) -> str:
         """Async version of generate_text.
@@ -300,7 +302,7 @@ class BaseAgent(ABC):
         ]
 
         response = await self.llm.ainvoke(messages)
-        return response.content
+        return cast(str, response.content)
 
     @abstractmethod
     def process(self, *args: Any, **kwargs: Any) -> Any:
@@ -321,8 +323,4 @@ class BaseAgent(ABC):
 
     def __repr__(self) -> str:
         """Return string representation of the agent."""
-        return (
-            f"{self.__class__.__name__}("
-            f"model={self.model_name}, "
-            f"temperature={self.temperature})"
-        )
+        return f"{self.__class__.__name__}(model={self.model_name}, temperature={self.temperature})"

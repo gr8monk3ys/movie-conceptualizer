@@ -9,16 +9,16 @@ including parameter placeholder styles (? vs $1) and JSON field handling.
 
 from __future__ import annotations
 
-import json
 import hashlib
 import hmac
+import json
 import os
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, TypeVar
 from uuid import uuid4
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
 from movie_conceptualizer.storage.database import (
     BaseDatabase,
@@ -115,7 +115,7 @@ class StoryboardPrompt(BaseModel):
 
     @field_validator("image_prompt", mode="before")
     @classmethod
-    def _normalize_image_prompt(cls, value: object, info) -> str | None:
+    def _normalize_image_prompt(cls, value: object, info: ValidationInfo) -> str | None:
         if value:
             return str(value)
         prompt = info.data.get("prompt") if hasattr(info, "data") else None
@@ -123,7 +123,7 @@ class StoryboardPrompt(BaseModel):
 
     @field_validator("shot_id", mode="before")
     @classmethod
-    def _normalize_shot_id(cls, value: object, info) -> str | None:
+    def _normalize_shot_id(cls, value: object, info: ValidationInfo) -> str | None:
         if value:
             return str(value)
         shot_number = info.data.get("shot_number") if hasattr(info, "data") else None
@@ -161,7 +161,7 @@ def _json_dumps(data: Any) -> str:
     return json.dumps(data, default=str)
 
 
-def _json_loads(data: str | list | dict | None) -> Any:
+def _json_loads(data: str | list[Any] | dict[str, Any] | None) -> Any:
     """Deserialize JSON string or already-parsed data.
 
     PostgreSQL JSONB fields return already-parsed Python objects,
@@ -169,7 +169,7 @@ def _json_loads(data: str | list | dict | None) -> Any:
     """
     if data is None:
         return None
-    if isinstance(data, (list, dict)):
+    if isinstance(data, list | dict):
         # Already parsed (PostgreSQL JSONB)
         return data
     return json.loads(data)
@@ -330,9 +330,7 @@ class BaseRepository:
             return ", ".join(f"${i}" for i in range(1, count + 1))
         return ", ".join("?" for _ in range(count))
 
-    async def _execute(
-        self, conn: Any, query: str, params: tuple[Any, ...] | None = None
-    ) -> Any:
+    async def _execute(self, conn: Any, query: str, params: tuple[Any, ...] | None = None) -> Any:
         """Execute a query with backend-appropriate handling.
 
         Args:
@@ -374,7 +372,9 @@ class BaseRepository:
                 cursor = await conn.execute(query)
             return await cursor.fetchone()
 
-    async def _fetchall(self, conn: Any, query: str, params: tuple[Any, ...] | None = None) -> list[Any]:
+    async def _fetchall(
+        self, conn: Any, query: str, params: tuple[Any, ...] | None = None
+    ) -> list[Any]:
         """Execute a query and fetch all rows.
 
         Args:
@@ -387,18 +387,16 @@ class BaseRepository:
         """
         if self.backend == DatabaseBackend.POSTGRESQL:
             if params:
-                return await conn.fetch(query, *params)
-            return await conn.fetch(query)
+                return list(await conn.fetch(query, *params))
+            return list(await conn.fetch(query))
         else:
             if params:
                 cursor = await conn.execute(query, params)
             else:
                 cursor = await conn.execute(query)
-            return await cursor.fetchall()
+            return list(await cursor.fetchall())
 
-    async def _fetchval(
-        self, conn: Any, query: str, params: tuple[Any, ...] | None = None
-    ) -> Any:
+    async def _fetchval(self, conn: Any, query: str, params: tuple[Any, ...] | None = None) -> Any:
         """Execute a query and fetch a single scalar value."""
         row = await self._fetchone(conn, query, params)
         if row is None:
@@ -439,7 +437,7 @@ class UserRepository(BaseRepository):
     ) -> UserModel:
         """Create a new user record."""
         user_id = str(uuid4())
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         query = (
             "INSERT INTO users (id, username, hashed_password, role, is_active, created_at, updated_at) "
             f"VALUES ({self._params(7)})"
@@ -482,14 +480,10 @@ class UserRepository(BaseRepository):
 
     async def set_active(self, user_id: str, is_active: bool) -> bool:
         query = (
-            "UPDATE users SET is_active = {is_active}, updated_at = {updated_at} "
-            "WHERE id = {user_id}"
-        ).format(
-            is_active=self._param(1),
-            updated_at=self._param(2),
-            user_id=self._param(3),
+            f"UPDATE users SET is_active = {self._param(1)}, updated_at = {self._param(2)} "
+            f"WHERE id = {self._param(3)}"
         )
-        params = (is_active, datetime.now(timezone.utc), user_id)
+        params = (is_active, datetime.now(UTC), user_id)
         async with self._db.connection() as conn:
             result = await self._execute(conn, query, params)
             if self.backend == DatabaseBackend.POSTGRESQL:
@@ -501,14 +495,10 @@ class UserRepository(BaseRepository):
 
     async def set_role(self, user_id: str, role: str) -> bool:
         query = (
-            "UPDATE users SET role = {role}, updated_at = {updated_at} "
-            "WHERE id = {user_id}"
-        ).format(
-            role=self._param(1),
-            updated_at=self._param(2),
-            user_id=self._param(3),
+            f"UPDATE users SET role = {self._param(1)}, updated_at = {self._param(2)} "
+            f"WHERE id = {self._param(3)}"
         )
-        params = (role, datetime.now(timezone.utc), user_id)
+        params = (role, datetime.now(UTC), user_id)
         async with self._db.connection() as conn:
             result = await self._execute(conn, query, params)
             if self.backend == DatabaseBackend.POSTGRESQL:
@@ -542,7 +532,7 @@ class JobIdempotencyRepository(BaseRepository):
             params.append(user_id)
         if max_age_seconds is not None and max_age_seconds > 0:
             conditions.append(f"created_at >= {self._param(len(params) + 1)}")
-            params.append(datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds))
+            params.append(datetime.now(UTC) - timedelta(seconds=max_age_seconds))
         where_clause = " AND ".join(conditions)
 
         query = f"SELECT job_id FROM job_idempotency WHERE {where_clause}"
@@ -561,7 +551,7 @@ class JobIdempotencyRepository(BaseRepository):
         job_id: str,
         user_id: str | None,
     ) -> None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         record_id = str(uuid4())
         query = (
             "INSERT INTO job_idempotency "
@@ -575,7 +565,7 @@ class JobIdempotencyRepository(BaseRepository):
     async def purge_expired(self, max_age_seconds: int) -> int:
         if max_age_seconds <= 0:
             return 0
-        older_than = datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds)
+        older_than = datetime.now(UTC) - timedelta(seconds=max_age_seconds)
         query = f"DELETE FROM job_idempotency WHERE created_at < {self._param(1)}"
         params = (older_than,)
         async with self._db.connection() as conn:
@@ -586,7 +576,7 @@ class JobIdempotencyRepository(BaseRepository):
                 except Exception:
                     return 0
             cursor = await conn.execute(query, params)
-            return cursor.rowcount
+            return int(cursor.rowcount)
 
 
 class JobRepository(BaseRepository):
@@ -609,7 +599,7 @@ class JobRepository(BaseRepository):
             f"VALUES ({self._params(13)})"
         )
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         params = (
             job_id,
             project_id,
@@ -663,31 +653,21 @@ class JobRepository(BaseRepository):
     ) -> None:
         """Update job status and error info."""
         query = (
-            "UPDATE jobs SET status = {status}, error = {error}, "
-            "last_error = {last_error}, updated_at = {updated_at} WHERE id = {job_id}"
-        ).format(
-            status=self._param(1),
-            error=self._param(2),
-            last_error=self._param(3),
-            updated_at=self._param(4),
-            job_id=self._param(5),
+            f"UPDATE jobs SET status = {self._param(1)}, error = {self._param(2)}, "
+            f"last_error = {self._param(3)}, updated_at = {self._param(4)} WHERE id = {self._param(5)}"
         )
 
-        params = (status, error, error, datetime.now(timezone.utc), job_id)
+        params = (status, error, error, datetime.now(UTC), job_id)
         async with self._db.connection() as conn:
             await self._execute(conn, query, params)
 
     async def start_job(self, job_id: str) -> None:
         """Mark job as running and increment attempts."""
         query = (
-            "UPDATE jobs SET status = {status}, attempts = attempts + 1, "
-            "updated_at = {updated_at} WHERE id = {job_id}"
-        ).format(
-            status=self._param(1),
-            updated_at=self._param(2),
-            job_id=self._param(3),
+            f"UPDATE jobs SET status = {self._param(1)}, attempts = attempts + 1, "
+            f"updated_at = {self._param(2)} WHERE id = {self._param(3)}"
         )
-        params = ("running", datetime.now(timezone.utc), job_id)
+        params = ("running", datetime.now(UTC), job_id)
         async with self._db.connection() as conn:
             await self._execute(conn, query, params)
 
@@ -699,15 +679,10 @@ class JobRepository(BaseRepository):
     ) -> None:
         """Update job progress and current step."""
         query = (
-            "UPDATE jobs SET progress = {progress}, current_step = {current_step}, "
-            "updated_at = {updated_at} WHERE id = {job_id}"
-        ).format(
-            progress=self._param(1),
-            current_step=self._param(2),
-            updated_at=self._param(3),
-            job_id=self._param(4),
+            f"UPDATE jobs SET progress = {self._param(1)}, current_step = {self._param(2)}, "
+            f"updated_at = {self._param(3)} WHERE id = {self._param(4)}"
         )
-        params = (progress, current_step, datetime.now(timezone.utc), job_id)
+        params = (progress, current_step, datetime.now(UTC), job_id)
         async with self._db.connection() as conn:
             await self._execute(conn, query, params)
 
@@ -727,7 +702,7 @@ class JobRepository(BaseRepository):
             "(id, job_id, project_id, user_id, status, description, error, payload, created_at) "
             f"VALUES ({self._params(9)})"
         )
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         params = (
             str(uuid4()),
             job_id,
@@ -744,10 +719,7 @@ class JobRepository(BaseRepository):
 
     async def list_dead_letters(self, limit: int = 50) -> list[dict[str, Any]]:
         """List recent dead-letter records."""
-        query = (
-            "SELECT * FROM jobs_dead_letter ORDER BY created_at DESC "
-            f"LIMIT {self._param(1)}"
-        )
+        query = f"SELECT * FROM jobs_dead_letter ORDER BY created_at DESC LIMIT {self._param(1)}"
         async with self._db.connection() as conn:
             rows = await self._fetchall(conn, query, (limit,))
             return [_row_to_dict(row, self.backend) for row in rows]
@@ -764,15 +736,11 @@ class JobRepository(BaseRepository):
     async def reset_job(self, job_id: str) -> None:
         """Reset job status and error fields for retry."""
         query = (
-            "UPDATE jobs SET status = {status}, error = NULL, last_error = NULL, "
-            "current_step = NULL, progress = 0.0, updated_at = {updated_at} "
-            "WHERE id = {job_id}"
-        ).format(
-            status=self._param(1),
-            updated_at=self._param(2),
-            job_id=self._param(3),
+            f"UPDATE jobs SET status = {self._param(1)}, error = NULL, last_error = NULL, "
+            f"current_step = NULL, progress = 0.0, updated_at = {self._param(2)} "
+            f"WHERE id = {self._param(3)}"
         )
-        params = ("queued", datetime.now(timezone.utc), job_id)
+        params = ("queued", datetime.now(UTC), job_id)
         async with self._db.connection() as conn:
             await self._execute(conn, query, params)
 
@@ -814,8 +782,14 @@ class JobRepository(BaseRepository):
             total_row = _row_to_dict(total_row_raw, self.backend) if total_row_raw else {"count": 0}
             total = total_row["count"]
 
-            avg_attempts_row_raw = await self._fetchone(conn, "SELECT AVG(attempts) as avg FROM jobs")
-            avg_attempts_row = _row_to_dict(avg_attempts_row_raw, self.backend) if avg_attempts_row_raw else {"avg": 0.0}
+            avg_attempts_row_raw = await self._fetchone(
+                conn, "SELECT AVG(attempts) as avg FROM jobs"
+            )
+            avg_attempts_row = (
+                _row_to_dict(avg_attempts_row_raw, self.backend)
+                if avg_attempts_row_raw
+                else {"avg": 0.0}
+            )
             avg_attempts = avg_attempts_row["avg"]
 
             if self.backend == DatabaseBackend.POSTGRESQL:
@@ -829,11 +803,12 @@ class JobRepository(BaseRepository):
                     "SELECT AVG((julianday(updated_at) - julianday(created_at)) * 86400.0) as avg FROM jobs",
                 )
 
-            duration_row = _row_to_dict(duration_row_raw, self.backend) if duration_row_raw else {"avg": 0.0}
+            duration_row = (
+                _row_to_dict(duration_row_raw, self.backend) if duration_row_raw else {"avg": 0.0}
+            )
             avg_duration = duration_row["avg"]
 
         succeeded = status_counts.get("succeeded", 0)
-        failed = status_counts.get("failed", 0)
         success_rate = (succeeded / total) if total else 0.0
 
         return {
@@ -875,7 +850,7 @@ class JobRepository(BaseRepository):
                     cursor = await conn.execute(query, tuple(params))
                 else:
                     cursor = await conn.execute(query)
-                return cursor.rowcount
+                return int(cursor.rowcount)
 
     async def purge_dead_letters(
         self,
@@ -903,7 +878,7 @@ class JobRepository(BaseRepository):
                     cursor = await conn.execute(query, tuple(params))
                 else:
                     cursor = await conn.execute(query)
-                return cursor.rowcount
+                return int(cursor.rowcount)
 
 
 class JobAuditLogRepository(BaseRepository):
@@ -952,9 +927,11 @@ class JobAuditLogRepository(BaseRepository):
         target_job_id: str | None = None,
         metadata: str | None = None,
     ) -> JobAuditLogModel:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         prev_hash = await self._get_last_hash()
-        log_hash = self._compute_hash(prev_hash, actor_user_id, action, target_job_id, metadata, now)
+        log_hash = self._compute_hash(
+            prev_hash, actor_user_id, action, target_job_id, metadata, now
+        )
         query = (
             "INSERT INTO job_audit_logs "
             "(id, actor_user_id, action, target_job_id, metadata, prev_hash, hash, created_at) "
@@ -977,10 +954,7 @@ class JobAuditLogRepository(BaseRepository):
         )
 
     async def list(self, limit: int = 100) -> list[JobAuditLogModel]:
-        query = (
-            "SELECT * FROM job_audit_logs ORDER BY created_at DESC "
-            f"LIMIT {self._param(1)}"
-        )
+        query = f"SELECT * FROM job_audit_logs ORDER BY created_at DESC LIMIT {self._param(1)}"
         async with self._db.connection() as conn:
             rows = await self._fetchall(conn, query, (limit,))
             return [JobAuditLogModel(**_row_to_dict(row, self.backend)) for row in rows]
@@ -1006,7 +980,7 @@ class JobAuditLogRepository(BaseRepository):
                 cursor = await conn.execute(query, tuple(params))
             else:
                 cursor = await conn.execute(query)
-            return cursor.rowcount
+            return int(cursor.rowcount)
 
 
 class RefreshTokenRepository(BaseRepository):
@@ -1019,7 +993,7 @@ class RefreshTokenRepository(BaseRepository):
         expires_at: datetime,
     ) -> None:
         token_id = str(uuid4())
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         query = (
             "INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at, created_at) "
             f"VALUES ({self._params(5)})"
@@ -1038,21 +1012,16 @@ class RefreshTokenRepository(BaseRepository):
 
     async def revoke(self, token_hash: str) -> None:
         query = (
-            "UPDATE refresh_tokens SET revoked_at = {revoked_at} "
-            "WHERE token_hash = {token_hash}"
-        ).format(
-            revoked_at=self._param(1),
-            token_hash=self._param(2),
+            f"UPDATE refresh_tokens SET revoked_at = {self._param(1)} "
+            f"WHERE token_hash = {self._param(2)}"
         )
-        params = (datetime.now(timezone.utc), token_hash)
+        params = (datetime.now(UTC), token_hash)
         async with self._db.connection() as conn:
             await self._execute(conn, query, params)
 
     async def purge_expired(self) -> int:
-        query = "DELETE FROM refresh_tokens WHERE expires_at < {now}".format(
-            now=self._param(1),
-        )
-        params = (datetime.now(timezone.utc),)
+        query = f"DELETE FROM refresh_tokens WHERE expires_at < {self._param(1)}"
+        params = (datetime.now(UTC),)
         async with self._db.connection() as conn:
             if self.backend == DatabaseBackend.POSTGRESQL:
                 result = await conn.execute(query, *params)
@@ -1061,7 +1030,7 @@ class RefreshTokenRepository(BaseRepository):
                 except Exception:
                     return 0
             cursor = await conn.execute(query, params)
-            return cursor.rowcount
+            return int(cursor.rowcount)
 
 
 class ProjectRepository(BaseRepository):
@@ -1096,7 +1065,7 @@ class ProjectRepository(BaseRepository):
             The created ProjectModel.
         """
         project_id = str(uuid4())
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         async with self._db.connection() as conn:
             query = f"""
@@ -1108,8 +1077,15 @@ class ProjectRepository(BaseRepository):
                 conn,
                 query,
                 (
-                    project_id, user_id, title, description, genre, style_notes,
-                    ProjectStatus.CREATED, now, now
+                    project_id,
+                    user_id,
+                    title,
+                    description,
+                    genre,
+                    style_notes,
+                    ProjectStatus.CREATED,
+                    now,
+                    now,
                 ),
             )
 
@@ -1152,7 +1128,9 @@ class ProjectRepository(BaseRepository):
             scene_count = await self._fetchval(conn, count_query, (project_id,))
             project.scene_count = scene_count or 0
 
-            count_query = f"SELECT SUM(total_shots) FROM shot_lists WHERE project_id = {self._param(1)}"
+            count_query = (
+                f"SELECT SUM(total_shots) FROM shot_lists WHERE project_id = {self._param(1)}"
+            )
             shot_count = await self._fetchval(conn, count_query, (project_id,))
             project.shot_count = shot_count or 0
 
@@ -1198,7 +1176,9 @@ class ProjectRepository(BaseRepository):
                 scene_count = await self._fetchval(conn, count_query, (project.id,))
                 project.scene_count = scene_count or 0
 
-                count_query = f"SELECT SUM(total_shots) FROM shot_lists WHERE project_id = {self._param(1)}"
+                count_query = (
+                    f"SELECT SUM(total_shots) FROM shot_lists WHERE project_id = {self._param(1)}"
+                )
                 shot_count = await self._fetchval(conn, count_query, (project.id,))
                 project.shot_count = shot_count or 0
 
@@ -1209,27 +1189,21 @@ class ProjectRepository(BaseRepository):
     async def assign_owner(self, project_id: str, user_id: str) -> bool:
         """Assign an owner to a project."""
         query = (
-            "UPDATE projects SET user_id = {user_id}, updated_at = {updated_at} "
-            "WHERE id = {project_id}"
-        ).format(
-            user_id=self._param(1),
-            updated_at=self._param(2),
-            project_id=self._param(3),
+            f"UPDATE projects SET user_id = {self._param(1)}, updated_at = {self._param(2)} "
+            f"WHERE id = {self._param(3)}"
         )
-        params = (user_id, datetime.now(timezone.utc), project_id)
+        params = (user_id, datetime.now(UTC), project_id)
         async with self._db.connection() as conn:
             if self.backend == DatabaseBackend.POSTGRESQL:
                 result = await conn.execute(query, *params)
-                return result != "UPDATE 0"
+                return bool(result != "UPDATE 0")
             cursor = await conn.execute(query, params)
-            return cursor.rowcount > 0
+            return int(cursor.rowcount) > 0
 
-    async def bulk_assign_owner(
-        self, user_id: str, only_unassigned: bool = True
-    ) -> int:
+    async def bulk_assign_owner(self, user_id: str, only_unassigned: bool = True) -> int:
         """Bulk assign owner to projects."""
         if only_unassigned:
-            condition = f"user_id IS NULL"
+            condition = "user_id IS NULL"
         else:
             condition = "1=1"
 
@@ -1240,7 +1214,7 @@ class ProjectRepository(BaseRepository):
             user_id=self._param(1),
             updated_at=self._param(2),
         )
-        params = (user_id, datetime.now(timezone.utc))
+        params = (user_id, datetime.now(UTC))
         async with self._db.connection() as conn:
             if self.backend == DatabaseBackend.POSTGRESQL:
                 result = await conn.execute(query, *params)
@@ -1249,7 +1223,7 @@ class ProjectRepository(BaseRepository):
                 except Exception:
                     return 0
             cursor = await conn.execute(query, params)
-            return cursor.rowcount
+            return int(cursor.rowcount)
 
     async def update(
         self,
@@ -1331,7 +1305,7 @@ class ProjectRepository(BaseRepository):
 
         # Always update the timestamp
         updates.append(f"updated_at = {self._param(param_idx)}")
-        values.append(datetime.now(timezone.utc))
+        values.append(datetime.now(UTC))
         param_idx += 1
 
         values.append(project_id)
@@ -1365,10 +1339,10 @@ class ProjectRepository(BaseRepository):
 
             if self.backend == DatabaseBackend.POSTGRESQL:
                 result = await conn.execute(query, project_id)
-                return result != "DELETE 0"
+                return bool(result != "DELETE 0")
             else:
                 cursor = await conn.execute(query, (project_id,))
-                return cursor.rowcount > 0
+                return int(cursor.rowcount) > 0
 
     async def exists(self, project_id: str) -> bool:
         """Check if a project exists.
@@ -1431,7 +1405,7 @@ class ScriptRepository(BaseRepository):
             The saved ScriptModel.
         """
         script_id = str(uuid4())
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         async with self._db.connection() as conn:
             # Check if script already exists for this project
@@ -1453,7 +1427,9 @@ class ScriptRepository(BaseRepository):
                     (content, format, title, author, now, project_id),
                 )
                 # Get the existing script ID
-                script_id = str(existing[0]) if self.backend == DatabaseBackend.POSTGRESQL else existing[0]
+                script_id = (
+                    str(existing[0]) if self.backend == DatabaseBackend.POSTGRESQL else existing[0]
+                )
             else:
                 # Insert new script
                 insert_query = f"""
@@ -1515,7 +1491,7 @@ class ScriptRepository(BaseRepository):
             title: Parsed script title.
             author: Parsed script author.
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         async with self._db.connection() as conn:
             query = f"""
@@ -1568,7 +1544,7 @@ class ScriptRepository(BaseRepository):
                         self._serialize_json(scene.characters),
                         self._serialize_json(scene.dialogue),
                         scene.raw_content,
-                        datetime.now(timezone.utc),
+                        datetime.now(UTC),
                     ),
                 )
 
@@ -1582,7 +1558,9 @@ class ScriptRepository(BaseRepository):
             List of SceneData.
         """
         async with self._db.connection() as conn:
-            query = f"SELECT * FROM scenes WHERE project_id = {self._param(1)} ORDER BY scene_number"
+            query = (
+                f"SELECT * FROM scenes WHERE project_id = {self._param(1)} ORDER BY scene_number"
+            )
             rows = await self._fetchall(conn, query, (project_id,))
 
             scenes = []
@@ -1610,10 +1588,10 @@ class ScriptRepository(BaseRepository):
 
             if self.backend == DatabaseBackend.POSTGRESQL:
                 result = await conn.execute(query, project_id)
-                return result != "DELETE 0"
+                return bool(result != "DELETE 0")
             else:
                 cursor = await conn.execute(query, (project_id,))
-                return cursor.rowcount > 0
+                return int(cursor.rowcount) > 0
 
 
 class GenerationRepository(BaseRepository):
@@ -1644,7 +1622,7 @@ class GenerationRepository(BaseRepository):
             overall_tone: Overall tone of the project.
             visual_motifs: List of visual motifs.
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         async with self._db.connection() as conn:
             # Delete existing analyses
@@ -1705,8 +1683,12 @@ class GenerationRepository(BaseRepository):
                     conn,
                     insert_query,
                     (
-                        pa_id, project_id, overall_tone,
-                        self._serialize_json(visual_motifs or []), now, now
+                        pa_id,
+                        project_id,
+                        overall_tone,
+                        self._serialize_json(visual_motifs or []),
+                        now,
+                        now,
                     ),
                 )
 
@@ -1720,7 +1702,9 @@ class GenerationRepository(BaseRepository):
             List of SceneAnalysis.
         """
         async with self._db.connection() as conn:
-            query = f"SELECT * FROM analyses WHERE project_id = {self._param(1)} ORDER BY scene_number"
+            query = (
+                f"SELECT * FROM analyses WHERE project_id = {self._param(1)} ORDER BY scene_number"
+            )
             rows = await self._fetchall(conn, query, (project_id,))
 
             analyses = []
@@ -1733,9 +1717,7 @@ class GenerationRepository(BaseRepository):
 
             return analyses
 
-    async def get_project_analysis(
-        self, project_id: str
-    ) -> tuple[str | None, list[str]]:
+    async def get_project_analysis(self, project_id: str) -> tuple[str | None, list[str]]:
         """Get project-level analysis info.
 
         Args:
@@ -1772,7 +1754,7 @@ class GenerationRepository(BaseRepository):
             shots: List of ShotData.
             style: Optional style used for generation.
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         async with self._db.connection() as conn:
             # Delete existing shot lists
@@ -1883,7 +1865,7 @@ class GenerationRepository(BaseRepository):
             style: Optional style used for generation.
             aspect_ratio: Aspect ratio for the storyboard.
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         async with self._db.connection() as conn:
             # Delete existing storyboard
@@ -1915,9 +1897,7 @@ class GenerationRepository(BaseRepository):
                 ),
             )
 
-    async def get_storyboard_prompts(
-        self, project_id: str
-    ) -> list[StoryboardPrompt]:
+    async def get_storyboard_prompts(self, project_id: str) -> list[StoryboardPrompt]:
         """Get storyboard prompts for a project.
 
         Args:

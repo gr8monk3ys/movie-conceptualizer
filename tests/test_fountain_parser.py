@@ -4,10 +4,7 @@ import pytest
 
 from movie_conceptualizer.models import (
     ActionBlock,
-    Character,
     DialogueBlock,
-    Location,
-    Scene,
     SceneType,
     Script,
     TimeOfDay,
@@ -21,7 +18,6 @@ from movie_conceptualizer.parsers import (
     parse_fountain,
     validate_script,
 )
-
 
 # Sample screenplay for testing
 SAMPLE_SCREENPLAY = """Title: The Test Script
@@ -208,10 +204,7 @@ class TestFountainParser:
         dialogues = [c for c in scene1.content if isinstance(c, DialogueBlock)]
 
         # John's first line has (hesitant) parenthetical
-        john_dialogue = next(
-            (d for d in dialogues if d.character_name == "JOHN"),
-            None
-        )
+        john_dialogue = next((d for d in dialogues if d.character_name == "JOHN"), None)
         assert john_dialogue is not None
         assert john_dialogue.parenthetical == "hesitant"
 
@@ -239,8 +232,9 @@ class TestFountainParser:
             all_content.extend(scene.content)
 
         transitions = [c for c in all_content if isinstance(c, Transition)]
-        # Note: transitions may be captured differently
-        # The screenplay has "CUT TO:" which should be captured
+        # The sample screenplay contains a "CUT TO:" transition, so at least
+        # one Transition element should be captured during parsing.
+        assert len(transitions) >= 1
 
     def test_parse_character_extension(self):
         """Parser should extract character extensions like V.O."""
@@ -250,10 +244,7 @@ class TestFountainParser:
         scene3 = script.scenes[2]
         dialogues = [c for c in scene3.content if isinstance(c, DialogueBlock)]
 
-        vo_dialogue = next(
-            (d for d in dialogues if d.character_extension),
-            None
-        )
+        vo_dialogue = next((d for d in dialogues if d.character_extension), None)
         assert vo_dialogue is not None
         assert "V.O." in vo_dialogue.character_extension.upper()
 
@@ -324,7 +315,10 @@ Bonjour! Comment \u00e7a va?
         parser = FountainParser()
         script = parser.parse(unicode_screenplay)
 
-        assert "CAFE" in script.scenes[0].location.upper() or "CAF" in script.scenes[0].location.upper()
+        assert (
+            "CAFE" in script.scenes[0].location.upper()
+            or "CAF" in script.scenes[0].location.upper()
+        )
         assert script.characters[0].name == "MARIE"
 
     def test_get_scene_by_number(self):
@@ -636,9 +630,6 @@ class TestLocationSceneAppearances:
         script = parse_fountain(SAMPLE_SCREENPLAY)
 
         # Find coffee shop location
-        coffee_shop = next(
-            (loc for loc in script.locations if "COFFEE" in loc.name.upper()),
-            None
-        )
+        coffee_shop = next((loc for loc in script.locations if "COFFEE" in loc.name.upper()), None)
         assert coffee_shop is not None
         assert 1 in coffee_shop.scene_appearances

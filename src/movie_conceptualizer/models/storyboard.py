@@ -11,7 +11,7 @@ tracking and style guidelines for coherent visual storytelling.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 from uuid import UUID, uuid4
@@ -79,16 +79,19 @@ class VisualTrait(BaseModel):
             "example": {
                 "trait_name": "hair",
                 "description": "Short, dark brown hair with slight wave",
-                "importance": "high"
+                "importance": "high",
             }
         }
     )
 
-    trait_name: str = Field(..., min_length=1, max_length=100, description="Name of the visual trait")
-    description: str = Field(..., min_length=1, max_length=500, description="Detailed description of the trait")
+    trait_name: str = Field(
+        ..., min_length=1, max_length=100, description="Name of the visual trait"
+    )
+    description: str = Field(
+        ..., min_length=1, max_length=500, description="Detailed description of the trait"
+    )
     importance: str = Field(
-        default="medium",
-        description="Importance level: low, medium, high, critical"
+        default="medium", description="Importance level: low, medium, high, critical"
     )
 
     @field_validator("importance")
@@ -118,7 +121,7 @@ class CharacterReference(BaseModel):
                 "character_name": "SARAH",
                 "description": "Female detective, late 30s, determined expression",
                 "visual_traits": [],
-                "reference_images": []
+                "reference_images": [],
             }
         }
     )
@@ -127,66 +130,49 @@ class CharacterReference(BaseModel):
     character_id: UUID = Field(..., description="ID of the character from the script")
     character_name: str = Field(..., min_length=1, max_length=100, description="Character name")
     description: str = Field(
-        ..., min_length=1, max_length=2000,
-        description="Detailed visual description for AI generation"
+        ...,
+        min_length=1,
+        max_length=2000,
+        description="Detailed visual description for AI generation",
     )
     visual_traits: list[VisualTrait] = Field(
-        default_factory=list,
-        description="Specific visual traits for consistency"
+        default_factory=list, description="Specific visual traits for consistency"
     )
     reference_images: list[str] = Field(
-        default_factory=list,
-        description="URLs or paths to reference images"
+        default_factory=list, description="URLs or paths to reference images"
     )
 
     # Physical attributes for AI prompting
     age_range: str | None = Field(
-        default=None, max_length=50,
-        description="Age range (e.g., 'late 30s', '20-25')"
+        default=None, max_length=50, description="Age range (e.g., 'late 30s', '20-25')"
     )
-    gender: str | None = Field(
-        default=None, max_length=50,
-        description="Gender presentation"
-    )
+    gender: str | None = Field(default=None, max_length=50, description="Gender presentation")
     ethnicity: str | None = Field(
-        default=None, max_length=100,
-        description="Ethnicity/appearance notes"
+        default=None, max_length=100, description="Ethnicity/appearance notes"
     )
-    body_type: str | None = Field(
-        default=None, max_length=100,
-        description="Body type description"
-    )
-    hair: str | None = Field(
-        default=None, max_length=200,
-        description="Hair color, style, length"
-    )
+    body_type: str | None = Field(default=None, max_length=100, description="Body type description")
+    hair: str | None = Field(default=None, max_length=200, description="Hair color, style, length")
     eyes: str | None = Field(
-        default=None, max_length=100,
-        description="Eye color and notable features"
+        default=None, max_length=100, description="Eye color and notable features"
     )
     distinctive_features: str | None = Field(
-        default=None, max_length=500,
-        description="Scars, tattoos, or other distinctive features"
+        default=None, max_length=500, description="Scars, tattoos, or other distinctive features"
     )
 
     # Wardrobe
     default_wardrobe: str | None = Field(
-        default=None, max_length=500,
-        description="Default costume/wardrobe description"
+        default=None, max_length=500, description="Default costume/wardrobe description"
     )
     wardrobe_variations: list[str] = Field(
-        default_factory=list,
-        description="Alternative wardrobe descriptions by scene"
+        default_factory=list, description="Alternative wardrobe descriptions by scene"
     )
 
     # AI generation metadata
     ai_embedding: list[float] | None = Field(
-        default=None,
-        description="Embedding vector for character consistency"
+        default=None, description="Embedding vector for character consistency"
     )
     consistency_seed: int | None = Field(
-        default=None,
-        description="Seed value for consistent generation"
+        default=None, description="Seed value for consistent generation"
     )
 
     @field_validator("character_name")
@@ -249,7 +235,7 @@ class StoryboardFrame(BaseModel):
                 "image_prompt": "Medium shot of Sarah entering police station...",
                 "image_url": "https://storage.example.com/frames/001.png",
                 "description": "Sarah enters the bustling police station",
-                "status": "approved"
+                "status": "approved",
             }
         }
     )
@@ -262,124 +248,87 @@ class StoryboardFrame(BaseModel):
 
     # Image data
     image_prompt: str = Field(
-        ..., min_length=1, max_length=5000,
-        description="AI prompt used to generate the image"
+        ..., min_length=1, max_length=5000, description="AI prompt used to generate the image"
     )
     image_url: str | None = Field(
-        default=None, max_length=2000,
-        description="URL of the generated image"
+        default=None, max_length=2000, description="URL of the generated image"
     )
     image_path: str | None = Field(
-        default=None, max_length=1000,
-        description="Local file path of the image"
+        default=None, max_length=1000, description="Local file path of the image"
     )
     thumbnail_url: str | None = Field(
-        default=None, max_length=2000,
-        description="URL of a thumbnail version"
+        default=None, max_length=2000, description="URL of a thumbnail version"
     )
 
     # Description and notes
     description: str = Field(
-        ..., min_length=1, max_length=1000,
-        description="Visual description of the frame content"
+        ..., min_length=1, max_length=1000, description="Visual description of the frame content"
     )
     notes: str | None = Field(
-        default=None, max_length=2000,
-        description="Additional notes for the frame"
+        default=None, max_length=2000, description="Additional notes for the frame"
     )
     dialogue: str | None = Field(
-        default=None, max_length=1000,
-        description="Dialogue occurring during this frame"
+        default=None, max_length=1000, description="Dialogue occurring during this frame"
     )
     action: str | None = Field(
-        default=None, max_length=1000,
-        description="Action occurring in this frame"
+        default=None, max_length=1000, description="Action occurring in this frame"
     )
     sound_notes: str | None = Field(
-        default=None, max_length=500,
-        description="Sound effects or music notes"
+        default=None, max_length=500, description="Sound effects or music notes"
     )
 
     # Characters in frame
     characters: list[str] = Field(
-        default_factory=list,
-        description="Character names appearing in this frame"
+        default_factory=list, description="Character names appearing in this frame"
     )
     character_reference_ids: list[UUID] = Field(
-        default_factory=list,
-        description="IDs of character references used"
+        default_factory=list, description="IDs of character references used"
     )
 
     # Technical details
     camera_angle: str | None = Field(
-        default=None, max_length=100,
-        description="Camera angle description"
+        default=None, max_length=100, description="Camera angle description"
     )
     shot_type: str | None = Field(
-        default=None, max_length=50,
-        description="Shot type (wide, medium, close-up, etc.)"
+        default=None, max_length=50, description="Shot type (wide, medium, close-up, etc.)"
     )
     movement_arrows: bool = Field(
-        default=False,
-        description="Whether to include movement indicator arrows"
+        default=False, description="Whether to include movement indicator arrows"
     )
     duration: float | None = Field(
-        default=None, ge=0.1, le=60,
-        description="Estimated duration in seconds"
+        default=None, ge=0.1, le=60, description="Estimated duration in seconds"
     )
 
     # Workflow status
     status: FrameStatus = Field(
-        default=FrameStatus.PENDING,
-        description="Current status in the workflow"
+        default=FrameStatus.PENDING, description="Current status in the workflow"
     )
     created_at: datetime = Field(
-        default_factory=datetime.utcnow,
-        description="When the frame was created"
+        default_factory=datetime.utcnow, description="When the frame was created"
     )
     updated_at: datetime = Field(
-        default_factory=datetime.utcnow,
-        description="When the frame was last updated"
+        default_factory=datetime.utcnow, description="When the frame was last updated"
     )
-    approved_by: UUID | None = Field(
-        default=None,
-        description="User ID who approved the frame"
-    )
-    approved_at: datetime | None = Field(
-        default=None,
-        description="When the frame was approved"
-    )
+    approved_by: UUID | None = Field(default=None, description="User ID who approved the frame")
+    approved_at: datetime | None = Field(default=None, description="When the frame was approved")
 
     # AI generation metadata
     ai_model: str | None = Field(
-        default=None, max_length=100,
-        description="AI model used for generation"
+        default=None, max_length=100, description="AI model used for generation"
     )
-    generation_seed: int | None = Field(
-        default=None,
-        description="Seed used for generation"
-    )
+    generation_seed: int | None = Field(default=None, description="Seed used for generation")
     generation_params: dict[str, Any] | None = Field(
-        default=None,
-        description="Additional generation parameters"
+        default=None, description="Additional generation parameters"
     )
-    generation_attempts: int = Field(
-        default=0, ge=0,
-        description="Number of generation attempts"
-    )
+    generation_attempts: int = Field(default=0, ge=0, description="Number of generation attempts")
 
     # Revision tracking
-    revision_number: int = Field(
-        default=1, ge=1,
-        description="Current revision number"
-    )
+    revision_number: int = Field(default=1, ge=1, description="Current revision number")
     previous_versions: list[str] = Field(
-        default_factory=list,
-        description="URLs/paths to previous versions"
+        default_factory=list, description="URLs/paths to previous versions"
     )
     revision_notes: str | None = Field(
-        default=None, max_length=1000,
-        description="Notes about current revision"
+        default=None, max_length=1000, description="Notes about current revision"
     )
 
     @field_validator("characters")
@@ -409,14 +358,14 @@ class StoryboardFrame(BaseModel):
     def update_status(self, new_status: FrameStatus) -> None:
         """Update the frame status and timestamp."""
         self.status = new_status
-        self.updated_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(UTC)
 
     def approve(self, approver_id: UUID) -> None:
         """Mark the frame as approved."""
         self.status = FrameStatus.APPROVED
         self.approved_by = approver_id
-        self.approved_at = datetime.now(timezone.utc)
-        self.updated_at = datetime.now(timezone.utc)
+        self.approved_at = datetime.now(UTC)
+        self.updated_at = datetime.now(UTC)
 
 
 class StyleGuidelines(BaseModel):
@@ -432,50 +381,36 @@ class StyleGuidelines(BaseModel):
                 "style": "cinematic",
                 "aspect_ratio": "2.39:1",
                 "color_palette": ["#1a1a2e", "#16213e", "#0f3460"],
-                "mood": "noir thriller"
+                "mood": "noir thriller",
             }
         }
     )
 
     style: StoryboardStyle = Field(
-        default=StoryboardStyle.CINEMATIC,
-        description="Visual style for frame generation"
+        default=StoryboardStyle.CINEMATIC, description="Visual style for frame generation"
     )
     aspect_ratio: AspectRatio = Field(
-        default=AspectRatio.RATIO_16_9,
-        description="Aspect ratio for all frames"
+        default=AspectRatio.RATIO_16_9, description="Aspect ratio for all frames"
     )
     color_palette: list[str] = Field(
-        default_factory=list,
-        description="Hex color codes for the color palette"
+        default_factory=list, description="Hex color codes for the color palette"
     )
-    mood: str | None = Field(
-        default=None, max_length=200,
-        description="Overall mood/atmosphere"
-    )
+    mood: str | None = Field(default=None, max_length=200, description="Overall mood/atmosphere")
     lighting_style: str | None = Field(
-        default=None, max_length=200,
-        description="Preferred lighting approach"
+        default=None, max_length=200, description="Preferred lighting approach"
     )
     visual_references: list[str] = Field(
-        default_factory=list,
-        description="URLs to visual reference images"
+        default_factory=list, description="URLs to visual reference images"
     )
     film_references: list[str] = Field(
-        default_factory=list,
-        description="Film titles for visual reference"
+        default_factory=list, description="Film titles for visual reference"
     )
-    avoid_elements: list[str] = Field(
-        default_factory=list,
-        description="Visual elements to avoid"
-    )
+    avoid_elements: list[str] = Field(default_factory=list, description="Visual elements to avoid")
     custom_instructions: str | None = Field(
-        default=None, max_length=2000,
-        description="Additional style instructions for AI"
+        default=None, max_length=2000, description="Additional style instructions for AI"
     )
     negative_prompt: str | None = Field(
-        default=None, max_length=1000,
-        description="Negative prompt for AI generation"
+        default=None, max_length=1000, description="Negative prompt for AI generation"
     )
 
     @field_validator("color_palette")
@@ -483,12 +418,13 @@ class StyleGuidelines(BaseModel):
     def validate_hex_colors(cls, v: list[str]) -> list[str]:
         """Validate that colors are valid hex codes."""
         import re
-        hex_pattern = re.compile(r'^#?([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$')
+
+        hex_pattern = re.compile(r"^#?([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$")
         validated = []
         for color in v:
             color = color.strip()
-            if not color.startswith('#'):
-                color = f'#{color}'
+            if not color.startswith("#"):
+                color = f"#{color}"
             if not hex_pattern.match(color):
                 raise ValueError(f"Invalid hex color: {color}")
             validated.append(color.lower())
@@ -509,7 +445,7 @@ class Storyboard(BaseModel):
                 "project_id": "550e8400-e29b-41d4-a716-446655440005",
                 "title": "The Investigation - Storyboard",
                 "frames": [],
-                "character_references": []
+                "character_references": [],
             }
         }
     )
@@ -517,63 +453,44 @@ class Storyboard(BaseModel):
     id: UUID = Field(default_factory=uuid4, description="Unique identifier for the storyboard")
     project_id: UUID = Field(..., description="ID of the associated project")
     title: str = Field(
-        default="Untitled Storyboard",
-        max_length=200,
-        description="Storyboard title"
+        default="Untitled Storyboard", max_length=200, description="Storyboard title"
     )
     description: str | None = Field(
-        default=None, max_length=2000,
-        description="Overall storyboard description"
+        default=None, max_length=2000, description="Overall storyboard description"
     )
 
     # Content
-    frames: list[StoryboardFrame] = Field(
-        default_factory=list,
-        description="All storyboard frames"
-    )
+    frames: list[StoryboardFrame] = Field(default_factory=list, description="All storyboard frames")
     character_references: list[CharacterReference] = Field(
-        default_factory=list,
-        description="Character references for consistency"
+        default_factory=list, description="Character references for consistency"
     )
     style_guidelines: StyleGuidelines = Field(
-        default_factory=StyleGuidelines,
-        description="Visual style guidelines"
+        default_factory=StyleGuidelines, description="Visual style guidelines"
     )
 
     # Organization
     scenes_covered: list[int] = Field(
-        default_factory=list,
-        description="Scene numbers included in this storyboard"
+        default_factory=list, description="Scene numbers included in this storyboard"
     )
 
     # Timestamps
     created_at: datetime = Field(
-        default_factory=datetime.utcnow,
-        description="When the storyboard was created"
+        default_factory=datetime.utcnow, description="When the storyboard was created"
     )
     updated_at: datetime = Field(
-        default_factory=datetime.utcnow,
-        description="When the storyboard was last updated"
+        default_factory=datetime.utcnow, description="When the storyboard was last updated"
     )
 
     # Workflow
-    status: str = Field(
-        default="draft",
-        description="Overall storyboard status"
-    )
-    version: int = Field(
-        default=1, ge=1,
-        description="Storyboard version number"
-    )
+    status: str = Field(default="draft", description="Overall storyboard status")
+    version: int = Field(default=1, ge=1, description="Storyboard version number")
 
     # AI generation settings
     default_ai_model: str | None = Field(
-        default=None, max_length=100,
-        description="Default AI model for frame generation"
+        default=None, max_length=100, description="Default AI model for frame generation"
     )
     consistency_mode: bool = Field(
-        default=True,
-        description="Whether to enforce character consistency"
+        default=True, description="Whether to enforce character consistency"
     )
 
     @computed_field
@@ -661,16 +578,16 @@ class Storyboard(BaseModel):
     def add_frame(self, frame: StoryboardFrame) -> None:
         """Add a frame to the storyboard."""
         self.frames.append(frame)
-        self.updated_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(UTC)
 
     def add_character_reference(self, reference: CharacterReference) -> None:
         """Add a character reference."""
         self.character_references.append(reference)
-        self.updated_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(UTC)
 
     def update_timestamp(self) -> None:
         """Update the updated_at timestamp."""
-        self.updated_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(UTC)
 
 
 # Type aliases

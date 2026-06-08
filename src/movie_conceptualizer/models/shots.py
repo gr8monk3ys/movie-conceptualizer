@@ -151,18 +151,22 @@ class Shot(BaseModel):
                 "duration": 4.5,
                 "scene_id": "550e8400-e29b-41d4-a716-446655440003",
                 "lens_mm": 50,
-                "notes": "Natural lighting from windows"
+                "notes": "Natural lighting from windows",
             }
         }
     )
 
     id: UUID = Field(default_factory=uuid4, description="Unique identifier for the shot")
-    shot_number: str = Field(..., min_length=1, max_length=20, description="Shot identifier (e.g., '1A', '2B')")
+    shot_number: str = Field(
+        ..., min_length=1, max_length=20, description="Shot identifier (e.g., '1A', '2B')"
+    )
     shot_type: ShotType = Field(..., description="Type of shot framing")
     camera_movement: CameraMovement = Field(
         default=CameraMovement.STATIC, description="Camera movement for this shot"
     )
-    description: str = Field(..., min_length=1, max_length=1000, description="Description of the shot content")
+    description: str = Field(
+        ..., min_length=1, max_length=1000, description="Description of the shot content"
+    )
     duration: float | None = Field(
         default=None, ge=0.1, le=300, description="Estimated duration in seconds"
     )
@@ -187,12 +191,12 @@ class Shot(BaseModel):
     characters: list[str] = Field(
         default_factory=list, description="Characters appearing in this shot"
     )
-    purpose: ShotPurpose | None = Field(
-        default=None, description="Narrative purpose of this shot"
-    )
+    purpose: ShotPurpose | None = Field(default=None, description="Narrative purpose of this shot")
 
     # Additional metadata
-    notes: str | None = Field(default=None, max_length=1000, description="Additional notes for the shot")
+    notes: str | None = Field(
+        default=None, max_length=1000, description="Additional notes for the shot"
+    )
     audio_notes: str | None = Field(
         default=None, max_length=500, description="Audio/dialogue notes"
     )
@@ -206,7 +210,9 @@ class Shot(BaseModel):
         default=None, max_length=100, description="Intended emotional impact"
     )
     film_grammar_notes: str | None = Field(
-        default=None, max_length=500, description="Film grammar considerations (180-degree rule, etc.)"
+        default=None,
+        max_length=500,
+        description="Film grammar considerations (180-degree rule, etc.)",
     )
     ai_confidence: float | None = Field(
         default=None, ge=0, le=1, description="AI confidence score for this shot suggestion"
@@ -229,16 +235,22 @@ class Shot(BaseModel):
     def shot_size(self) -> ShotSize:
         """Categorize shot into broad size category."""
         wide_shots = {
-            ShotType.EXTREME_WIDE, ShotType.WIDE, ShotType.FULL,
-            ShotType.MEDIUM_WIDE, ShotType.GROUP, ShotType.AERIAL
+            ShotType.EXTREME_WIDE,
+            ShotType.WIDE,
+            ShotType.FULL,
+            ShotType.MEDIUM_WIDE,
+            ShotType.GROUP,
+            ShotType.AERIAL,
         }
         medium_shots = {
-            ShotType.MEDIUM, ShotType.MEDIUM_CLOSE_UP, ShotType.TWO_SHOT,
-            ShotType.THREE_SHOT, ShotType.COWBOY, ShotType.OVER_THE_SHOULDER
+            ShotType.MEDIUM,
+            ShotType.MEDIUM_CLOSE_UP,
+            ShotType.TWO_SHOT,
+            ShotType.THREE_SHOT,
+            ShotType.COWBOY,
+            ShotType.OVER_THE_SHOULDER,
         }
-        close_shots = {
-            ShotType.CLOSE_UP, ShotType.CHOKER, ShotType.POV
-        }
+        close_shots = {ShotType.CLOSE_UP, ShotType.CHOKER, ShotType.POV}
 
         if self.shot_type in wide_shots:
             return ShotSize.WIDE
@@ -278,7 +290,7 @@ class ShotList(BaseModel):
                 "scene_id": "550e8400-e29b-41d4-a716-446655440003",
                 "scene_number": 1,
                 "shots": [],
-                "notes": "Focus on tension building through shot progression"
+                "notes": "Focus on tension building through shot progression",
             }
         }
     )
@@ -384,10 +396,7 @@ class ShotList(BaseModel):
     def get_shots_with_character(self, character_name: str) -> list[Shot]:
         """Get all shots featuring a specific character."""
         normalized = character_name.upper().strip()
-        return [
-            shot for shot in self.shots
-            if normalized in shot.characters
-        ]
+        return [shot for shot in self.shots if normalized in shot.characters]
 
     def add_shot(self, shot: Shot) -> None:
         """Add a shot to the list, setting scene_id if not set."""
@@ -418,10 +427,7 @@ class ProjectShotList(BaseModel):
 
     model_config = ConfigDict(
         json_schema_extra={
-            "example": {
-                "project_id": "550e8400-e29b-41d4-a716-446655440005",
-                "shot_lists": []
-            }
+            "example": {"project_id": "550e8400-e29b-41d4-a716-446655440005", "shot_lists": []}
         }
     )
 

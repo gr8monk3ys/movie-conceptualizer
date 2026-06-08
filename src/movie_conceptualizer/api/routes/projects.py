@@ -9,8 +9,8 @@ from movie_conceptualizer.api.dependencies import (
     UserInDB,
     get_project_store,
     is_admin_user,
-    require_auth_if_enabled,
     require_admin_access,
+    require_auth_if_enabled,
 )
 from movie_conceptualizer.api.ratelimit import DEFAULT_RATE_LIMIT, limiter
 from movie_conceptualizer.api.schemas import (
