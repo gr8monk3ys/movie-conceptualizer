@@ -96,16 +96,17 @@ disable_error_code = ["prop-decorator"]
 
 # Optional / third-party dependencies that ship without type stubs.
 [[tool.mypy.overrides]]
-module = ["pdf2image", "pytesseract", "asyncpg", "asyncpg.*"]
+module = [
+    "pdf2image",
+    "pytesseract",
+    "asyncpg",
+    "asyncpg.*",
+    "jose",
+    "jose.*",
+    "passlib",
+    "passlib.*",
+]
 ignore_missing_imports = true
-
-# TODO(typing): the FastAPI layer is not yet strictly typed (missing return
-# annotations on route handlers, untyped decorators, etc.). It is exercised by
-# the API integration tests; strict typing here is tracked as follow-up debt.
-# Burning this down module-by-module is the path back to full strict coverage.
-[[tool.mypy.overrides]]
-module = ["movie_conceptualizer.api.*"]
-ignore_errors = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

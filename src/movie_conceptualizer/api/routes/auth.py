@@ -8,7 +8,7 @@ Provides endpoints for:
 """
 
 from datetime import UTC, datetime, timedelta
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
@@ -319,7 +319,7 @@ async def update_user_role(
     response: Response,
     user_id: str,
     body: SetUserRoleRequest,
-    current_user: Annotated[UserInDB, Depends(require_admin_access)] = None,
+    current_user: UserInDB = Depends(require_admin_access),
 ) -> UserResponse:
     repo = UserRepository()
     updated = await repo.set_role(user_id, body.role)
@@ -487,7 +487,7 @@ async def logout(
     request: Request,
     response: Response,
     body: RefreshTokenRequest,
-) -> dict:
+) -> dict[str, Any]:
     token_hash = _hash_refresh_token(body.refresh_token)
     repo = RefreshTokenRepository()
     await repo.revoke(token_hash)

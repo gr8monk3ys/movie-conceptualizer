@@ -4,7 +4,7 @@ import csv
 import io
 import os
 from datetime import UTC, datetime, timedelta
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
@@ -29,7 +29,7 @@ from movie_conceptualizer.api.job_payloads import (
     StoryboardJobPayload,
     decode_payload,
 )
-from movie_conceptualizer.api.jobs import get_job_manager
+from movie_conceptualizer.api.jobs import JobManager, get_job_manager
 from movie_conceptualizer.api.ratelimit import DEFAULT_RATE_LIMIT, limiter
 from movie_conceptualizer.api.schemas import (
     ErrorResponse,
@@ -121,8 +121,8 @@ async def list_dead_letter_jobs(
     request: Request,
     response: Response,
     limit: int = Query(50, ge=1, le=200, description="Number of records to return"),
-    current_user: Annotated[UserInDB, Depends(require_admin_access)] = None,
-):
+    current_user: UserInDB = Depends(require_admin_access),
+) -> dict[str, Any]:
     repo = JobRepository()
     records = await repo.list_dead_letters(limit=limit)
     for record in records:
@@ -151,8 +151,8 @@ async def retry_job(
     request: Request,
     response: Response,
     job_id: str,
-    current_user: Annotated[UserInDB, Depends(require_admin_access)] = None,
-):
+    current_user: UserInDB = Depends(require_admin_access),
+) -> dict[str, Any]:
     repo = JobRepository()
     job = await repo.get(job_id)
     if job is None:
@@ -240,8 +240,8 @@ async def replay_dead_letter_jobs(
     request: Request,
     response: Response,
     limit: int = Query(50, ge=1, le=200, description="Number of records to replay"),
-    current_user: Annotated[UserInDB, Depends(require_admin_access)] = None,
-):
+    current_user: UserInDB = Depends(require_admin_access),
+) -> dict[str, Any]:
     backend = os.environ.get("MOVIECON_JOB_BACKEND", "inprocess").lower()
     if backend != "arq":
         raise HTTPException(
@@ -333,7 +333,7 @@ async def replay_dead_letter_jobs(
 async def get_job_metrics(
     request: Request,
     response: Response,
-    current_user: Annotated[UserInDB, Depends(require_admin_access)] = None,
+    current_user: UserInDB = Depends(require_admin_access),
 ) -> JobMetricsResponse:
     repo = JobRepository()
     metrics = await repo.get_metrics()
@@ -363,8 +363,8 @@ async def purge_jobs(
         30, ge=1, le=3650, description="Purge jobs older than N days"
     ),
     include_dead_letter: bool = Query(False, description="Also purge dead-letter records"),
-    current_user: Annotated[UserInDB, Depends(require_admin_access)] = None,
-):
+    current_user: UserInDB = Depends(require_admin_access),
+) -> dict[str, Any]:
     repo = JobRepository()
     older_than = (
         datetime.now(UTC) - timedelta(days=older_than_days) if older_than_days is not None else None
@@ -407,8 +407,8 @@ async def purge_job_idempotency(
     older_than_days: int | None = Query(
         None, ge=1, le=3650, description="Purge idempotency records older than N days"
     ),
-    current_user: Annotated[UserInDB, Depends(require_admin_access)] = None,
-):
+    current_user: UserInDB = Depends(require_admin_access),
+) -> dict[str, Any]:
     ttl_days = older_than_days if older_than_days is not None else IDEMPOTENCY_TTL_DAYS
     if ttl_days <= 0:
         return {"deleted": 0, "older_than_days": ttl_days}
@@ -431,6 +431,7 @@ async def purge_job_idempotency(
 
 @router.get(
     "/audit",
+    response_model=None,
     responses={
         200: {"description": "Audit log entries"},
         429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
@@ -444,8 +445,8 @@ async def list_job_audit_logs(
     response: Response,
     format: str = Query("json", description="Response format: json or csv"),
     limit: int = Query(100, ge=1, le=500, description="Number of records to return"),
-    current_user: Annotated[UserInDB, Depends(require_admin_access)] = None,
-):
+    current_user: UserInDB = Depends(require_admin_access),
+) -> Response | dict[str, Any]:
     repo = JobAuditLogRepository()
     logs = await repo.list(limit=limit)
 
@@ -522,8 +523,8 @@ async def purge_job_audit_logs(
     request: Request,
     response: Response,
     older_than_days: int = Query(30, ge=1, le=3650, description="Purge logs older than N days"),
-    current_user: Annotated[UserInDB, Depends(require_admin_access)] = None,
-):
+    current_user: UserInDB = Depends(require_admin_access),
+) -> dict[str, Any]:
     repo = JobAuditLogRepository()
     older_than = datetime.now(UTC) - timedelta(days=older_than_days)
     deleted = await repo.purge(older_than=older_than)
@@ -546,7 +547,7 @@ async def get_job_status(
     request: Request,
     response: Response,
     job_id: str,
-    job_manager=Depends(get_job_manager),
+    job_manager: JobManager = Depends(get_job_manager),
     current_user: Annotated[UserInDB | None, Depends(require_auth_if_enabled)] = None,
 ) -> JobStatusResponse:
     job = await job_manager.get(job_id)

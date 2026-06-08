@@ -15,7 +15,7 @@ import hmac
 import os
 import secrets
 from datetime import UTC, datetime, timedelta
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
@@ -30,7 +30,7 @@ from movie_conceptualizer.storage import UserRepository
 # passlib 1.7.4 still expects it and logs warnings otherwise.
 # -----------------------------------------------------------------------------
 try:
-    import bcrypt  # type: ignore
+    import bcrypt
 
     if not hasattr(bcrypt, "__about__"):
 
@@ -143,13 +143,13 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a plain password against a hashed password."""
-    return pwd_context.verify(plain_password, hashed_password)
+    return bool(pwd_context.verify(plain_password, hashed_password))
 
 
 def get_password_hash(password: str) -> str:
     """Hash a password using bcrypt."""
     try:
-        return pwd_context.hash(password)
+        return str(pwd_context.hash(password))
     except Exception:
         if DEV_MODE and ALLOW_DEV_FALLBACK:
             # Fallback for environments where bcrypt backend is unavailable
@@ -349,7 +349,7 @@ class RefreshTokenRequest(BaseModel):
 
 
 def create_access_token(
-    data: dict,
+    data: dict[str, Any],
     expires_delta: timedelta | None = None,
 ) -> str:
     """Create a JWT access token.
@@ -370,7 +370,7 @@ def create_access_token(
 
     to_encode.update({"exp": expire})
 
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    encoded_jwt: str = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
 

@@ -26,7 +26,7 @@ from movie_conceptualizer.api.dependencies import (
     is_admin_user,
     require_auth_if_enabled,
 )
-from movie_conceptualizer.api.jobs import get_job_manager
+from movie_conceptualizer.api.jobs import JobManager, get_job_manager
 from movie_conceptualizer.api.ratelimit import DEFAULT_RATE_LIMIT, limiter
 from movie_conceptualizer.api.schemas import (
     ErrorResponse,
@@ -293,7 +293,7 @@ async def upload_script_file_async(
     file: UploadFile = File(..., description="Script file to upload"),
     store: ProjectStore = Depends(get_project_store),
     workflow: Workflow = Depends(get_workflow),
-    job_manager=Depends(get_job_manager),
+    job_manager: JobManager = Depends(get_job_manager),
     current_user: Annotated[UserInDB | None, Depends(require_auth_if_enabled)] = None,
 ) -> GenerationJobResponse:
     """Upload a script file asynchronously."""

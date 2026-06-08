@@ -1,7 +1,7 @@
 """Export API routes."""
 
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 
@@ -100,7 +100,7 @@ async def export_shot_list(
     # Calculate totals
     total_duration = sum(s.duration_seconds or 0 for s in project.shots)
 
-    export_data = {
+    export_data: dict[str, Any] = {
         "project": {
             "id": project.id,
             "title": project.title,
@@ -204,7 +204,7 @@ async def export_storyboard(
 
         frames_data.append(frame_dict)
 
-    export_data = {
+    export_data: dict[str, Any] = {
         "project": {
             "id": project.id,
             "title": project.title,
@@ -309,7 +309,7 @@ async def export_analysis(
         }
         analyses_data.append(analysis_dict)
 
-    export_data = {
+    export_data: dict[str, Any] = {
         "project": {
             "id": project.id,
             "title": project.title,

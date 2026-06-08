@@ -6,6 +6,7 @@ import asyncio
 import os
 from collections.abc import Callable, Coroutine
 from datetime import UTC, datetime
+from typing import Any
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
@@ -39,11 +40,11 @@ class JobManager:
     def __init__(self, repository: JobRepository | None = None) -> None:
         self._repo = repository or JobRepository()
         self._lock = asyncio.Lock()
-        self._tasks: set[asyncio.Task] = set()
+        self._tasks: set[asyncio.Task[None]] = set()
 
     async def submit(
         self,
-        coro_or_factory: Coroutine | Callable[[str], Coroutine],
+        coro_or_factory: Coroutine[Any, Any, Any] | Callable[[str], Coroutine[Any, Any, Any]],
         description: str | None = None,
         project_id: str | None = None,
         user_id: str | None = None,
@@ -85,7 +86,7 @@ class JobManager:
     async def _run(
         self,
         job_id: str,
-        coro_or_factory: Coroutine | Callable[[str], Coroutine],
+        coro_or_factory: Coroutine[Any, Any, Any] | Callable[[str], Coroutine[Any, Any, Any]],
     ) -> None:
         token = request_id_var.set(job_id)
         coro = coro_or_factory(job_id) if callable(coro_or_factory) else coro_or_factory

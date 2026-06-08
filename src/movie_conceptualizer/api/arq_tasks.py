@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from typing import Any
 
 from arq import Retry
 from arq.connections import RedisSettings
@@ -22,7 +23,7 @@ async def _handle_job_failure(
     repo: JobRepository,
     job_id: str,
     exc: Exception,
-    ctx: dict,
+    ctx: dict[str, Any],
 ) -> None:
     job_try = ctx.get("job_try", 1)
     max_tries = ctx.get("max_tries", 3)
@@ -31,7 +32,7 @@ async def _handle_job_failure(
     if job_try < max_tries:
         await repo.update_status(job_id, JobStatus.QUEUED.value, error=error_message)
         delay = min(2**job_try, 60)
-        raise Retry(delay=delay)
+        raise Retry(defer=delay)
 
     await repo.update_status(job_id, JobStatus.FAILED.value, error=error_message)
     model = await repo.get(job_id)
@@ -49,7 +50,7 @@ async def _handle_job_failure(
 
 
 async def run_full_pipeline_job(
-    ctx: dict,
+    ctx: dict[str, Any],
     job_id: str,
     project_id: str,
     scene_numbers: list[int] | None = None,
@@ -83,7 +84,7 @@ async def run_full_pipeline_job(
 
 
 async def run_analysis_job(
-    ctx: dict,
+    ctx: dict[str, Any],
     job_id: str,
     project_id: str,
     scene_numbers: list[int] | None = None,
@@ -108,7 +109,7 @@ async def run_analysis_job(
 
 
 async def run_shots_job(
-    ctx: dict,
+    ctx: dict[str, Any],
     job_id: str,
     project_id: str,
     scene_numbers: list[int] | None = None,
@@ -137,7 +138,7 @@ async def run_shots_job(
 
 
 async def run_storyboard_job(
-    ctx: dict,
+    ctx: dict[str, Any],
     job_id: str,
     project_id: str,
     scene_numbers: list[int] | None = None,

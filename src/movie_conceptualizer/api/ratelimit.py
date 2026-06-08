@@ -13,7 +13,7 @@ Configuration is done via environment variables:
 import logging
 import os
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional, cast
 
 from fastapi import Request, Response
 from slowapi import Limiter
@@ -179,7 +179,7 @@ def _initialize_limiter() -> Limiter:
 limiter = _initialize_limiter()
 
 
-async def check_redis_health() -> dict:
+async def check_redis_health() -> dict[str, Any]:
     """
     Check the health of the Redis connection.
 
@@ -207,8 +207,8 @@ async def check_redis_health() -> dict:
         _redis_client.ping()
 
         # Get some basic info
-        info = _redis_client.info(section="server")
-        memory_info = _redis_client.info(section="memory")
+        info = cast(dict[str, Any], _redis_client.info(section="server"))
+        memory_info = cast(dict[str, Any], _redis_client.info(section="memory"))
 
         return {
             "status": "healthy",
@@ -217,7 +217,7 @@ async def check_redis_health() -> dict:
             "prefix": REDIS_PREFIX,
             "redis_version": info.get("redis_version", "unknown"),
             "used_memory_human": memory_info.get("used_memory_human", "unknown"),
-            "connected_clients": _redis_client.info(section="clients").get(
+            "connected_clients": cast(dict[str, Any], _redis_client.info(section="clients")).get(
                 "connected_clients", "unknown"
             ),
         }
@@ -250,7 +250,7 @@ def _mask_redis_url(url: str) -> str:
     return url
 
 
-def get_rate_limit_status() -> dict:
+def get_rate_limit_status() -> dict[str, Any]:
     """
     Get the current rate limiting configuration status.
 
@@ -346,7 +346,7 @@ def get_rate_limit_headers(request: Request, response: Response) -> Response:
 # Rate limit decorators for different endpoint types
 
 
-def standard_rate_limit() -> Callable:
+def standard_rate_limit() -> Callable[..., Any]:
     """
     Standard rate limit decorator for regular endpoints.
 
@@ -362,7 +362,7 @@ def standard_rate_limit() -> Callable:
     return limiter.limit(DEFAULT_RATE_LIMIT)
 
 
-def generation_rate_limit() -> Callable:
+def generation_rate_limit() -> Callable[..., Any]:
     """
     Stricter rate limit decorator for AI generation endpoints.
 
@@ -380,7 +380,7 @@ def generation_rate_limit() -> Callable:
     return limiter.limit(GENERATION_RATE_LIMIT)
 
 
-def no_rate_limit() -> Callable:
+def no_rate_limit() -> Callable[..., Any]:
     """
     Exempt endpoint from rate limiting.
 

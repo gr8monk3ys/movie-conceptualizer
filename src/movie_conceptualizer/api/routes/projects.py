@@ -1,6 +1,6 @@
 """Project management API routes."""
 
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
@@ -177,8 +177,8 @@ async def assign_project_owner(
     project_id: str,
     body: AssignProjectOwnerRequest,
     store: ProjectStore = Depends(get_project_store),
-    current_user: Annotated[UserInDB, Depends(require_admin_access)] = None,
-) -> dict:
+    current_user: UserInDB = Depends(require_admin_access),
+) -> dict[str, Any]:
     if not await store.exists(project_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -204,8 +204,8 @@ async def bulk_assign_project_owner(
     response: Response,
     body: BulkAssignProjectOwnerRequest,
     store: ProjectStore = Depends(get_project_store),
-    current_user: Annotated[UserInDB, Depends(require_admin_access)] = None,
-) -> dict:
+    current_user: UserInDB = Depends(require_admin_access),
+) -> dict[str, Any]:
     updated = await store.bulk_assign_owner(
         user_id=body.user_id,
         only_unassigned=body.only_unassigned,

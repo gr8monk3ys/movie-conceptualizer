@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    pass
+    from arq.connections import RedisSettings
 
 
-def get_redis_settings():
+def get_redis_settings() -> RedisSettings:
     url = (
         os.environ.get("MOVIECON_JOB_REDIS_URL")
         or os.environ.get("MOVIECON_REDIS_URL")
@@ -104,7 +104,7 @@ async def enqueue_storyboard_job(
     await redis.close()
 
 
-async def get_queue_health() -> dict:
+async def get_queue_health() -> dict[str, Any]:
     """Check health of the job queue backend."""
     try:
         from arq import create_pool
