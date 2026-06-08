@@ -140,8 +140,12 @@ elif DEV_MODE:
 else:
     cors_origins = []
 
+# Wildcard origins are only ever used in DEV_MODE, and allow_credentials is
+# forced False whenever origins is "*" (or empty), so the unsafe
+# wildcard-with-credentials combination is never configured.
 app.add_middleware(
     CORSMiddleware,
+    # nosemgrep: python.fastapi.security.wildcard-cors.wildcard-cors
     allow_origins=cors_origins,
     allow_credentials=cors_origins not in ([], ["*"]),
     allow_methods=["*"],

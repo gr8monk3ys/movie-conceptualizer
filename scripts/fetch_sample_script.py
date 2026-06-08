@@ -23,8 +23,15 @@ def _ext_from_url(url: str) -> str:
 
 
 def download(url: str, dest: Path, timeout: int = 20) -> None:
+    # Restrict to http(s); urllib otherwise honours file:// (and similar)
+    # schemes, which would let a crafted URL read local files.
+    scheme = urlparse(url).scheme.lower()
+    if scheme not in ("http", "https"):
+        raise ValueError(f"Unsupported URL scheme '{scheme or 'none'}'; use http or https.")
     req = Request(url, headers={"User-Agent": "movie-conceptualizer-demo/1.0"})
-    with urlopen(req, timeout=timeout) as resp:  # nosec - URL provided by user
+    # Scheme validated above; suppress the generic dynamic-urllib audit finding.
+    # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
+    with urlopen(req, timeout=timeout) as resp:
         data = resp.read()
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_bytes(data)

@@ -5,16 +5,25 @@ on:
     branches:
       - "**"
   pull_request:
+  workflow_dispatch:
 
 permissions: read-all
 
 jobs:
   semgrep:
     runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-      - name: Run Semgrep
-        uses: returntocorp/semgrep-action@713efdd345f3035192eaa63f56867b88e63e4e5d
-        with:
-          config: auto
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.2.2
+      - name: Semgrep scan
+        # Keep the broad "auto" ruleset, but exclude two audit rules that are
+        # false positives across the whole storage layer: every query is
+        # parameterized (values bound separately to execute()); the f-strings
+        # only assemble placeholder syntax via _param()/_params(), never user
+        # data. Single-site findings are handled inline with `# nosemgrep`.
+        run: >-
+          semgrep scan --config auto --error
+          --exclude-rule python.lang.security.audit.formatted-sql-query.formatted-sql-query
+          --exclude-rule python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query
