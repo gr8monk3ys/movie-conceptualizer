@@ -54,7 +54,7 @@ def parse(
     table.add_row("Scenes", str(summary["scene_count"]))
     table.add_row("Characters", str(summary["character_count"]))
     table.add_row("Locations", str(summary["location_count"]))
-    table.add_row("Est. Pages", f"{summary['total_page_count']:.1f}")
+    table.add_row("Est. Pages", f"{summary['total_pages']:.1f}")
     table.add_row("Est. Runtime", f"{summary['estimated_runtime_minutes']:.0f} min")
 
     console.print(table)
@@ -67,7 +67,7 @@ def parse(
     if verbose:
         console.print("\n[bold]Scenes:[/bold]")
         for scene in script.scenes:
-            console.print(f"  {scene.scene_number}. {scene.slugline}")
+            console.print(f"  {scene.scene_number}. {scene.heading}")
 
         console.print("\n[bold]Characters:[/bold]")
         for char in script.characters:
@@ -172,14 +172,15 @@ def analyze(
     console.print("\n[bold green]✓ Analysis Complete[/bold green]\n")
 
     for analyzed in analyzed_scenes:
-        panel_content = f"""[cyan]Emotional Beat:[/cyan] {analyzed.emotional_beat.value if hasattr(analyzed.emotional_beat, 'value') else analyzed.emotional_beat}
-[cyan]Tone:[/cyan] {analyzed.tone.value if hasattr(analyzed.tone, 'value') else analyzed.tone}
-[cyan]Pacing:[/cyan] {analyzed.pacing.value if hasattr(analyzed.pacing, 'value') else analyzed.pacing}
-[cyan]Visual Notes:[/cyan] {analyzed.visual_notes or 'N/A'}"""
+        panel_content = f"""[cyan]Tone:[/cyan] {analyzed.overall_tone.value}
+[cyan]Pacing:[/cyan] {analyzed.pacing.value}
+[cyan]Emotional Beats:[/cyan] {len(analyzed.emotional_beats)}
+[cyan]Summary:[/cyan] {analyzed.summary}
+[cyan]Atmosphere:[/cyan] {analyzed.scene_atmosphere or 'N/A'}"""
 
         console.print(Panel(
             panel_content,
-            title=f"Scene {analyzed.scene_number}: {analyzed.slugline[:50]}",
+            title=f"Scene {analyzed.scene_number}: {analyzed.scene_heading[:50]}",
             border_style="blue",
         ))
 
@@ -222,7 +223,7 @@ def shots(
             # First analyze
             analyzed = analyzer.analyze_scene(scene)
             # Then design shots
-            shot_list = shot_designer.design_shots(scene, analyzed)
+            shot_list = shot_designer.design_shot_list(analyzed)
             all_shot_lists.append(shot_list)
             progress.advance(task)
 
@@ -243,7 +244,7 @@ def shots(
             movement = shot.camera_movement.value if hasattr(shot.camera_movement, 'value') else (shot.camera_movement or "STATIC")
             shot_type = shot.shot_type.value if hasattr(shot.shot_type, 'value') else shot.shot_type
             table.add_row(
-                shot.shot_number,
+                str(shot.shot_number),
                 shot_type,
                 movement,
                 shot.description[:60] + "..." if len(shot.description) > 60 else shot.description,
@@ -296,8 +297,8 @@ def storyboard(
 
         for scene in script.scenes:
             analyzed = analyzer.analyze_scene(scene)
-            shot_list = shot_designer.design_shots(scene, analyzed)
-            storyboard = storyboard_artist.create_storyboard(
+            shot_list = shot_designer.design_shot_list(analyzed)
+            storyboard = storyboard_artist.create_storyboard_for_scene(
                 shot_list, analyzed, style_guide=style
             )
             all_frames.extend(storyboard.frames)
