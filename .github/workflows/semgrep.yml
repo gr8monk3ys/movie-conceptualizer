@@ -1,13 +1,17 @@
 name: semgrep
 
 on:
+  pull_request:
   push:
     branches:
-      - "**"
-  pull_request:
+      - main
   workflow_dispatch:
 
 permissions: read-all
+
+concurrency:
+  group: semgrep-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   semgrep:
