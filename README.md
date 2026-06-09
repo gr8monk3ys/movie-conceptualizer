@@ -318,6 +318,20 @@ uv run ruff format src
 
 ## Production Deployment
 
+### Docker
+
+```bash
+# Build and run API + Redis (set MOVIECON_SECRET_KEY in your environment or .env)
+export MOVIECON_SECRET_KEY=change-me
+export ANTHROPIC_API_KEY=your-api-key
+docker compose up --build
+
+# Include the background job worker (arq)
+docker compose --profile jobs up --build
+```
+
+### Bare metal
+
 ```bash
 # Install with production extras
 pip install movie-conceptualizer[postgresql,redis]
