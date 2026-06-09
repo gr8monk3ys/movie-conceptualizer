@@ -443,7 +443,9 @@ def serve(
 @app.command()
 def version() -> None:
     """Show version information."""
-    console.print("[bold]Movie Conceptualizer[/bold] v0.1.0")
+    from movie_conceptualizer import __version__
+
+    console.print(f"[bold]Movie Conceptualizer[/bold] v{__version__}")
     console.print("AI-powered filmmaking: script → shot list → storyboard")
 
 

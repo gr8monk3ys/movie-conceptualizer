@@ -99,7 +99,7 @@ Rate limit headers are included in all responses:
 - X-RateLimit-Remaining: Requests remaining in current window
 - X-RateLimit-Reset: Time when the window resets
 """
-API_VERSION = "0.1.0"
+from movie_conceptualizer import __version__ as api_version  # noqa: E402
 
 # Configure logging early
 configure_logging()
@@ -115,7 +115,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(
     title=API_TITLE,
     description=API_DESCRIPTION,
-    version=API_VERSION,
+    version=api_version,
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
@@ -247,7 +247,7 @@ async def root(request: Request) -> dict[str, Any]:
     """Root endpoint with API information."""
     return {
         "name": API_TITLE,
-        "version": API_VERSION,
+        "version": api_version,
         "description": "AI-powered filmmaking platform: script to shot list to storyboard",
         "documentation": {
             "swagger": "/docs",
@@ -304,7 +304,7 @@ async def health_check() -> dict[str, Any]:
     health_response: dict[str, Any] = {
         "status": "healthy",
         "timestamp": datetime.now(UTC).isoformat(),
-        "version": API_VERSION,
+        "version": api_version,
         "rate_limiting": {
             "backend": get_backend_type(),
         },
