@@ -12,6 +12,11 @@ from movie_conceptualizer.api.dependencies import (
     is_admin_user,
     require_auth_if_enabled,
 )
+from movie_conceptualizer.api.pdf_export import (
+    build_analysis_pdf,
+    build_shot_list_pdf,
+    build_storyboard_pdf,
+)
 from movie_conceptualizer.api.ratelimit import DEFAULT_RATE_LIMIT, limiter
 from movie_conceptualizer.api.schemas import (
     ErrorResponse,
@@ -24,7 +29,7 @@ router = APIRouter(prefix="/projects/{project_id}/export", tags=["export"])
 
 @router.get(
     "/shotlist",
-    response_model=ExportResponse,
+    response_model=None,
     responses={
         200: {"description": "Shot list exported successfully"},
         404: {"model": ErrorResponse, "description": "Project or shot list not found"},
@@ -43,7 +48,7 @@ async def export_shot_list(
     include_timing: bool = Query(True, description="Include timing estimates"),
     store: ProjectStore = Depends(get_project_store),
     current_user: Annotated[UserInDB | None, Depends(require_auth_if_enabled)] = None,
-) -> ExportResponse:
+) -> ExportResponse | Response:
     """Export the shot list for a project."""
     project = await store.get(project_id)
 
@@ -124,16 +129,11 @@ async def export_shot_list(
     filename = f"{safe_title}_shotlist_{timestamp}.{format.value}"
 
     if format == ExportFormat.PDF:
-        # For MVP, return a placeholder for PDF - actual PDF generation would require a library
-        return ExportResponse(
-            project_id=project.id,
-            format=format,
-            filename=filename,
-            data={
-                "message": "PDF export not yet implemented in MVP",
-                "json_data": export_data,
-            },
-            generated_at=datetime.now(UTC),
+        pdf_bytes = build_shot_list_pdf(export_data)
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
 
     return ExportResponse(
@@ -147,7 +147,7 @@ async def export_shot_list(
 
 @router.get(
     "/storyboard",
-    response_model=ExportResponse,
+    response_model=None,
     responses={
         200: {"description": "Storyboard data exported successfully"},
         404: {"model": ErrorResponse, "description": "Project or storyboard not found"},
@@ -165,7 +165,7 @@ async def export_storyboard(
     include_prompts: bool = Query(True, description="Include generation prompts"),
     store: ProjectStore = Depends(get_project_store),
     current_user: Annotated[UserInDB | None, Depends(require_auth_if_enabled)] = None,
-) -> ExportResponse:
+) -> ExportResponse | Response:
     """Export storyboard data for a project."""
     project = await store.get(project_id)
 
@@ -232,16 +232,11 @@ async def export_storyboard(
     filename = f"{safe_title}_storyboard_{timestamp}.{format.value}"
 
     if format == ExportFormat.PDF:
-        # For MVP, return a placeholder for PDF
-        return ExportResponse(
-            project_id=project.id,
-            format=format,
-            filename=filename,
-            data={
-                "message": "PDF export not yet implemented in MVP",
-                "json_data": export_data,
-            },
-            generated_at=datetime.now(UTC),
+        pdf_bytes = build_storyboard_pdf(export_data)
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
 
     return ExportResponse(
@@ -255,14 +250,14 @@ async def export_storyboard(
 
 @router.get(
     "/analysis",
-    response_model=ExportResponse,
+    response_model=None,
     responses={
         200: {"description": "Analysis exported successfully"},
         404: {"model": ErrorResponse, "description": "Project or analysis not found"},
         429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
     },
     summary="Export analysis data",
-    description="Export the script analysis data in JSON format.",
+    description="Export the script analysis data in JSON or PDF format.",
 )
 @limiter.limit(DEFAULT_RATE_LIMIT)
 async def export_analysis(
@@ -272,7 +267,7 @@ async def export_analysis(
     format: ExportFormat = Query(ExportFormat.JSON, description="Export format"),
     store: ProjectStore = Depends(get_project_store),
     current_user: Annotated[UserInDB | None, Depends(require_auth_if_enabled)] = None,
-) -> ExportResponse:
+) -> ExportResponse | Response:
     """Export analysis data for a project."""
     project = await store.get(project_id)
 
@@ -332,15 +327,11 @@ async def export_analysis(
     filename = f"{safe_title}_analysis_{timestamp}.{format.value}"
 
     if format == ExportFormat.PDF:
-        return ExportResponse(
-            project_id=project.id,
-            format=format,
-            filename=filename,
-            data={
-                "message": "PDF export not yet implemented in MVP",
-                "json_data": export_data,
-            },
-            generated_at=datetime.now(UTC),
+        pdf_bytes = build_analysis_pdf(export_data)
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
 
     return ExportResponse(

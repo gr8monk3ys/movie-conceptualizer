@@ -123,10 +123,7 @@ API docs available at `http://localhost:8000/docs`
 movie_conceptualizer/
 ├── models/           # Pydantic data models
 │   ├── core.py       # Script, Scene, Character, Location
-│   ├── shots.py      # Shot, ShotList, ShotType, CameraMovement
-│   ├── storyboard.py # StoryboardFrame, Storyboard
-│   ├── blocking.py   # BlockingDiagram, CharacterPosition
-│   └── analysis.py   # AnalyzedScene, emotional beats
+│   └── analysis.py   # AnalyzedScene, Shot, ShotList, Storyboard
 ├── parsers/          # Screenplay parsing
 │   ├── fountain_parser.py  # Fountain format parser
 │   └── script_loader.py    # File loading utilities
@@ -283,7 +280,7 @@ moviecon serve
 
 **Output:**
 - JSON - Structured data for all outputs
-- PDF - Shot lists and storyboard packets (planned)
+- PDF - Shot lists, storyboard prompt packets, and scene analyses (`format=pdf` on export endpoints)
 
 ## Development
 
@@ -306,7 +303,7 @@ Rollback strategy:
 - PostgreSQL: restore a `pg_dump` snapshot taken before migration.
 
 ```bash
-# Run tests (120 tests)
+# Run tests (131 tests)
 uv run pytest
 
 # Type checking
