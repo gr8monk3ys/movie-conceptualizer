@@ -339,8 +339,8 @@ def coerce_pdf_text_to_fountain(text: str) -> str:
     if slug_scenes:
         scenes = []
         for heading, body in slug_scenes:
-            scenes.append(f\"INT. {heading}\\n\\n{body}\\n\")
-        return \"\\n\".join(scenes)
+            scenes.append(f"INT. {heading}\n\n{body}\n")
+        return "\n".join(scenes)
 
     # No scene headings detected: synthesize simple scenes from paragraphs
     paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
