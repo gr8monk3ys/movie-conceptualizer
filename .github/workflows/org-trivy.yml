@@ -1,11 +1,9 @@
 name: org-trivy
 
 on:
-  pull_request:
-  push:
-    branches:
-      - main
   workflow_dispatch:
+  schedule:
+    - cron: "23 8 1 * *"  # monthly (minute-safe policy)
 
 permissions: read-all
 
