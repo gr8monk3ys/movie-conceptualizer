@@ -55,13 +55,7 @@ class TestCoercePdfTextToFountain:
 
     def test_sluglines_produce_parseable_scenes(self):
         """Wrapped sluglines round-trip into a Script with scenes."""
-        text = (
-            "KITCHEN - DAY\n"
-            "John pours coffee.\n"
-            "\n"
-            "ROOFTOP - NIGHT\n"
-            "Sarah looks at the city.\n"
-        )
+        text = "KITCHEN - DAY\nJohn pours coffee.\n\nROOFTOP - NIGHT\nSarah looks at the city.\n"
         result = coerce_pdf_text_to_fountain(text)
         script = load_text(result, title="Coerced")
 
