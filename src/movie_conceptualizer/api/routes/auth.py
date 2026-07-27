@@ -451,9 +451,17 @@ async def refresh_access_token(
 
     user_repo = UserRepository()
     user = await user_repo.get_by_id(record["user_id"])
+    if user is None or not user.is_active:
+        # A refresh token must not outlive its user: deletion/deactivation
+        # has to be an effective kill switch.
+        await repo.revoke(token_hash)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
+        )
     access_token_expires = timedelta(minutes=TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": record["user_id"], "username": user.username if user else None},
+        data={"sub": record["user_id"], "username": user.username},
         expires_delta=access_token_expires,
     )
 
