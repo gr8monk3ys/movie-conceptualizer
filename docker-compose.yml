@@ -7,6 +7,10 @@ services:
       MOVIECON_RATE_LIMIT_BACKEND: redis
       MOVIECON_REDIS_URL: redis://redis:6379/0
       MOVIECON_REQUIRE_AUTH: "true"
+      # Must be "arq" when running with --profile jobs, otherwise the API
+      # keeps executing jobs in-process and the worker receives nothing.
+      MOVIECON_JOB_BACKEND: ${MOVIECON_JOB_BACKEND:-inprocess}
+      MOVIECON_JOB_REDIS_URL: ${MOVIECON_JOB_REDIS_URL:-redis://redis:6379/0}
       # Set these in a .env file or your shell; never commit secrets.
       MOVIECON_SECRET_KEY: ${MOVIECON_SECRET_KEY:?set MOVIECON_SECRET_KEY}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}

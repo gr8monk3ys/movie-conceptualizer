@@ -330,8 +330,10 @@ export MOVIECON_SECRET_KEY=change-me
 export ANTHROPIC_API_KEY=your-api-key
 docker compose up --build
 
-# Include the background job worker (arq)
-docker compose --profile jobs up --build
+# Include the background job worker (arq). MOVIECON_JOB_BACKEND=arq is
+# required so the API enqueues to the worker instead of running jobs
+# in-process.
+MOVIECON_JOB_BACKEND=arq docker compose --profile jobs up --build
 ```
 
 ### Bare metal
