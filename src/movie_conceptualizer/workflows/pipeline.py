@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator, Iterator
 from typing import Any, Literal
+from uuid import uuid4
 
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
@@ -50,8 +51,10 @@ def validate_input(state: PipelineState) -> PipelineState:
     elif not script.scenes:
         errors.append("Script has no scenes to process")
 
+    # Nodes return partial state updates; LangGraph merges them into the
+    # running state. Rebuilding the full state via PipelineState(**state, ...)
+    # would raise TypeError on keys already present in the initial state.
     return PipelineState(
-        **state,
         errors=errors,
         total_scenes=len(script.scenes) if script else 0,
     )
@@ -70,7 +73,7 @@ def analyze_scenes(state: PipelineState) -> PipelineState:
     script = state.get("script")
 
     if not script or errors:
-        return state
+        return PipelineState()
 
     try:
         # Create the analyzer agent with configured settings
@@ -83,14 +86,13 @@ def analyze_scenes(state: PipelineState) -> PipelineState:
         analyzed_script = analyzer.analyze_script(script)
 
         return PipelineState(
-            **state,
             analyzed_scenes=analyzed_script.analyzed_scenes,
             main_characters=analyzed_script.main_characters,
         )
 
     except Exception as e:
         errors.append(f"Error in scene analysis: {str(e)}")
-        return PipelineState(**state, errors=errors)
+        return PipelineState(errors=errors)
 
 
 async def analyze_scenes_async(state: PipelineState) -> PipelineState:
@@ -106,7 +108,7 @@ async def analyze_scenes_async(state: PipelineState) -> PipelineState:
     script = state.get("script")
 
     if not script or errors:
-        return state
+        return PipelineState()
 
     try:
         analyzer = ScriptAnalyzerAgent(
@@ -117,14 +119,13 @@ async def analyze_scenes_async(state: PipelineState) -> PipelineState:
         analyzed_script = await analyzer.aanalyze_script(script)
 
         return PipelineState(
-            **state,
             analyzed_scenes=analyzed_script.analyzed_scenes,
             main_characters=analyzed_script.main_characters,
         )
 
     except Exception as e:
         errors.append(f"Error in scene analysis: {str(e)}")
-        return PipelineState(**state, errors=errors)
+        return PipelineState(errors=errors)
 
 
 def design_shots(state: PipelineState) -> PipelineState:
@@ -140,7 +141,7 @@ def design_shots(state: PipelineState) -> PipelineState:
     analyzed_scenes = state.get("analyzed_scenes", [])
 
     if not analyzed_scenes or errors:
-        return state
+        return PipelineState()
 
     try:
         designer = ShotDesignerAgent(
@@ -153,11 +154,11 @@ def design_shots(state: PipelineState) -> PipelineState:
             shot_list = designer.design_shot_list(scene)
             shot_lists.append(shot_list)
 
-        return PipelineState(**state, shot_lists=shot_lists)
+        return PipelineState(shot_lists=shot_lists)
 
     except Exception as e:
         errors.append(f"Error in shot design: {str(e)}")
-        return PipelineState(**state, errors=errors)
+        return PipelineState(errors=errors)
 
 
 async def design_shots_async(state: PipelineState) -> PipelineState:
@@ -173,7 +174,7 @@ async def design_shots_async(state: PipelineState) -> PipelineState:
     analyzed_scenes = state.get("analyzed_scenes", [])
 
     if not analyzed_scenes or errors:
-        return state
+        return PipelineState()
 
     try:
         designer = ShotDesignerAgent(
@@ -185,11 +186,11 @@ async def design_shots_async(state: PipelineState) -> PipelineState:
         tasks = [designer.adesign_shot_list(scene) for scene in analyzed_scenes]
         shot_lists = list(await asyncio.gather(*tasks))
 
-        return PipelineState(**state, shot_lists=shot_lists)
+        return PipelineState(shot_lists=shot_lists)
 
     except Exception as e:
         errors.append(f"Error in shot design: {str(e)}")
-        return PipelineState(**state, errors=errors)
+        return PipelineState(errors=errors)
 
 
 def create_storyboards(state: PipelineState) -> PipelineState:
@@ -206,7 +207,7 @@ def create_storyboards(state: PipelineState) -> PipelineState:
     analyzed_scenes = state.get("analyzed_scenes", [])
 
     if not shot_lists or not analyzed_scenes or errors:
-        return state
+        return PipelineState()
 
     try:
         artist = StoryboardArtistAgent(
@@ -228,14 +229,13 @@ def create_storyboards(state: PipelineState) -> PipelineState:
             all_frames.extend(storyboard.frames)
 
         return PipelineState(
-            **state,
             storyboards=storyboards,
             storyboard_frames=all_frames,
         )
 
     except Exception as e:
         errors.append(f"Error in storyboard creation: {str(e)}")
-        return PipelineState(**state, errors=errors)
+        return PipelineState(errors=errors)
 
 
 async def create_storyboards_async(state: PipelineState) -> PipelineState:
@@ -252,7 +252,7 @@ async def create_storyboards_async(state: PipelineState) -> PipelineState:
     analyzed_scenes = state.get("analyzed_scenes", [])
 
     if not shot_lists or not analyzed_scenes or errors:
-        return state
+        return PipelineState()
 
     try:
         artist = StoryboardArtistAgent(
@@ -273,14 +273,13 @@ async def create_storyboards_async(state: PipelineState) -> PipelineState:
             all_frames.extend(storyboard.frames)
 
         return PipelineState(
-            **state,
             storyboards=storyboards,
             storyboard_frames=all_frames,
         )
 
     except Exception as e:
         errors.append(f"Error in storyboard creation: {str(e)}")
-        return PipelineState(**state, errors=errors)
+        return PipelineState(errors=errors)
 
 
 def human_review_analysis(state: PipelineState) -> PipelineState:
@@ -298,7 +297,7 @@ def human_review_analysis(state: PipelineState) -> PipelineState:
     analyzed_scenes = state.get("analyzed_scenes", [])
 
     if not analyzed_scenes:
-        return state
+        return PipelineState()
 
     # Interrupt for human review
     # The human can approve, modify, or reject the analysis
@@ -323,7 +322,7 @@ def human_review_analysis(state: PipelineState) -> PipelineState:
 
     # If human provided modifications, apply them
     # For now, we just pass through
-    return state
+    return PipelineState()
 
 
 def human_review_shots(state: PipelineState) -> PipelineState:
@@ -341,7 +340,7 @@ def human_review_shots(state: PipelineState) -> PipelineState:
     shot_lists = state.get("shot_lists", [])
 
     if not shot_lists:
-        return state
+        return PipelineState()
 
     total_shots = sum(len(sl.shots) for sl in shot_lists)
 
@@ -363,7 +362,7 @@ def human_review_shots(state: PipelineState) -> PipelineState:
         }
     )
 
-    return state
+    return PipelineState()
 
 
 # ============================================================================
@@ -601,8 +600,10 @@ def run_pipeline(
 
     # Run the pipeline
     run_config: dict[str, Any] = {}
-    if thread_id and config.enable_checkpoints:
-        run_config["configurable"] = {"thread_id": thread_id}
+    if config.enable_checkpoints:
+        # A checkpointer requires a thread_id; generate one when the caller
+        # doesn't care about resuming a specific thread.
+        run_config["configurable"] = {"thread_id": thread_id or str(uuid4())}
 
     final_state = pipeline.invoke(initial_state, run_config)
 
@@ -637,8 +638,10 @@ async def arun_pipeline(
     )
 
     run_config: dict[str, Any] = {}
-    if thread_id and config.enable_checkpoints:
-        run_config["configurable"] = {"thread_id": thread_id}
+    if config.enable_checkpoints:
+        # A checkpointer requires a thread_id; generate one when the caller
+        # doesn't care about resuming a specific thread.
+        run_config["configurable"] = {"thread_id": thread_id or str(uuid4())}
 
     final_state = await pipeline.ainvoke(initial_state, run_config)
 
@@ -673,8 +676,10 @@ def stream_pipeline(
     )
 
     run_config: dict[str, Any] = {}
-    if thread_id and config.enable_checkpoints:
-        run_config["configurable"] = {"thread_id": thread_id}
+    if config.enable_checkpoints:
+        # A checkpointer requires a thread_id; generate one when the caller
+        # doesn't care about resuming a specific thread.
+        run_config["configurable"] = {"thread_id": thread_id or str(uuid4())}
 
     yield from pipeline.stream(initial_state, run_config)
 
@@ -707,8 +712,10 @@ async def astream_pipeline(
     )
 
     run_config: dict[str, Any] = {}
-    if thread_id and config.enable_checkpoints:
-        run_config["configurable"] = {"thread_id": thread_id}
+    if config.enable_checkpoints:
+        # A checkpointer requires a thread_id; generate one when the caller
+        # doesn't care about resuming a specific thread.
+        run_config["configurable"] = {"thread_id": thread_id or str(uuid4())}
 
     async for event in pipeline.astream(initial_state, run_config):
         yield event
