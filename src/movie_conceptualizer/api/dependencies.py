@@ -6,6 +6,7 @@ repositories, and workflow services.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import re
@@ -43,6 +44,7 @@ from movie_conceptualizer.api.schemas import (
 )
 from movie_conceptualizer.models.analysis import (
     AnalyzedScene,
+    DramaticMoment,
     EmotionalTone,
     PacingType,
 )
@@ -229,6 +231,62 @@ def _parse_duration_hint(hint: str | None) -> float | None:
     if not numbers:
         return None
     return sum(numbers) / len(numbers)
+
+
+def _tone_from_value(value: str | None) -> EmotionalTone:
+    if not value:
+        return EmotionalTone.NEUTRAL
+    try:
+        return EmotionalTone(value.strip().lower())
+    except ValueError:
+        return EmotionalTone.NEUTRAL
+
+
+def _pacing_from_value(value: str | None) -> PacingType:
+    if not value:
+        return PacingType.MODERATE
+    try:
+        return PacingType(value.strip().lower())
+    except ValueError:
+        return PacingType.MODERATE
+
+
+def _analyzed_scene_from_stored(
+    analysis: SceneAnalysis,
+    scene_data: SceneData | None,
+) -> AnalyzedScene:
+    """Rebuild an AnalyzedScene from a persisted SceneAnalysis + SceneData.
+
+    Lets downstream agents reuse analyses that were already generated and
+    stored, instead of re-running the analyzer (and paying for it) on every
+    shot/storyboard step.
+    """
+    heading = scene_data.heading if scene_data else f"Scene {analysis.scene_number}"
+    summary = (scene_data.description if scene_data else None) or (
+        analysis.mood or f"Scene {analysis.scene_number}"
+    )
+    dialogue_heavy = bool(scene_data.dialogue) if scene_data else False
+    action_heavy = bool(scene_data and scene_data.description) and not dialogue_heavy
+
+    return AnalyzedScene(
+        scene_number=analysis.scene_number,
+        scene_heading=heading,
+        summary=summary,
+        emotional_beats=[],
+        overall_tone=_tone_from_value(analysis.mood),
+        pacing=_pacing_from_value(analysis.pacing),
+        dramatic_moments=[
+            DramaticMoment(description=moment, importance=0.5, suggested_emphasis="emphasize")
+            for moment in analysis.key_moments
+        ],
+        visual_emphasis_points=[],
+        character_descriptions=[],
+        scene_atmosphere=analysis.visual_style or "neutral",
+        suggested_color_palette=analysis.color_palette[0] if analysis.color_palette else None,
+        is_dialogue_heavy=dialogue_heavy,
+        is_action_heavy=action_heavy,
+        character_count=len(scene_data.characters) if scene_data else 0,
+    )
 
 
 _ANALYSIS_TO_API_SHOT_TYPE = {
@@ -887,7 +945,7 @@ class RealWorkflow:
 
         script = _script_from_scene_data(scenes)
         analyzer = ScriptAnalyzerAgent()
-        analyzed_script = analyzer.analyze_script(script)
+        analyzed_script = await analyzer.aanalyze_script(script)
 
         analyses: list[SceneAnalysis] = []
         for analyzed_scene in analyzed_script.analyzed_scenes:
@@ -924,12 +982,26 @@ class RealWorkflow:
         if not scenes:
             return []
 
-        script = _script_from_scene_data(scenes)
-        analyzer = ScriptAnalyzerAgent()
-        analyzed_script = analyzer.analyze_script(script)
+        # Reuse persisted analyses when the caller provides them; only run
+        # the (expensive) analyzer when no analysis exists yet.
+        analyzed_scenes: list[AnalyzedScene] = []
+        if analyses:
+            scene_by_number = {s.scene_number: s for s in scenes}
+            analyzed_scenes = [
+                _analyzed_scene_from_stored(a, scene_by_number[a.scene_number])
+                for a in analyses
+                if a.scene_number in scene_by_number
+            ]
+        if not analyzed_scenes:
+            script = _script_from_scene_data(scenes)
+            analyzer = ScriptAnalyzerAgent()
+            analyzed_script = await analyzer.aanalyze_script(script)
+            analyzed_scenes = analyzed_script.analyzed_scenes
 
         designer = ShotDesignerAgent()
-        shot_lists = [designer.design_shot_list(scene) for scene in analyzed_script.analyzed_scenes]
+        shot_lists = list(
+            await asyncio.gather(*(designer.adesign_shot_list(scene) for scene in analyzed_scenes))
+        )
 
         api_shots: list[ShotData] = []
         for shot_list in shot_lists:
@@ -966,10 +1038,17 @@ class RealWorkflow:
         if not shots:
             return []
 
-        if scenes:
+        if analyses:
+            # Reuse persisted analyses instead of re-running the analyzer.
+            scene_by_number = {s.scene_number: s for s in scenes} if scenes else {}
+            analyzed_scenes = [
+                _analyzed_scene_from_stored(a, scene_by_number.get(a.scene_number))
+                for a in analyses
+            ]
+        elif scenes:
             script = _script_from_scene_data(scenes)
             analyzer = ScriptAnalyzerAgent()
-            analyzed_script = analyzer.analyze_script(script)
+            analyzed_script = await analyzer.aanalyze_script(script)
             analyzed_scenes = analyzed_script.analyzed_scenes
         else:
             scene_fallback: dict[int, AnalyzedScene] = {}
@@ -1030,7 +1109,7 @@ class RealWorkflow:
             shot_lists[shot.scene_number].shots.append(analysis_shot)
 
         artist = StoryboardArtistAgent()
-        storyboards = artist.create_storyboards(
+        storyboards = await artist.acreate_storyboards(
             shot_lists=list(shot_lists.values()),
             analyzed_scenes=analyzed_scenes,
             style_guide=style,
