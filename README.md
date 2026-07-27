@@ -181,6 +181,7 @@ The platform uses LangGraph to orchestrate three specialized AI agents:
 | **Authentication** | | |
 | `MOVIECON_SECRET_KEY` | (random) | JWT signing key |
 | `MOVIECON_REQUIRE_AUTH` | `false` | Require authentication |
+| `MOVIECON_ALLOW_REGISTRATION` | `true` | Allow new user registration |
 | `MOVIECON_DEV_MODE` | `false` | Enable dev mode behaviors |
 | `MOVIECON_ALLOW_DEV_FALLBACK` | `false` | Enable dev login/plaintext fallback (dev only) |
 | `MOVIECON_TOKEN_EXPIRE_MINUTES` | `60` | JWT token expiration |
@@ -210,6 +211,9 @@ The platform uses LangGraph to orchestrate three specialized AI agents:
 | `MOVIECON_RATE_LIMIT_AUTH` | `10/minute` | Auth endpoint limit |
 | `MOVIECON_REDIS_URL` | `redis://localhost:6379/0` | Redis connection URL |
 | `MOVIECON_REDIS_PREFIX` | `moviecon:ratelimit:` | Redis key prefix |
+| `MOVIECON_TRUST_PROXY` | `false` | Trust `X-Forwarded-For` for client IPs (set behind a reverse proxy) |
+| **Server** | | |
+| `MOVIECON_CORS_ORIGINS` | - | Comma-separated allowed CORS origins |
 | **PDF OCR** | | |
 | `MOVIECON_PDF_OCR` | `auto` | OCR mode (`auto`, `always`, `never`) |
 | `MOVIECON_PDF_OCR_DPI` | `200` | OCR rendering DPI |
@@ -221,6 +225,7 @@ The platform uses LangGraph to orchestrate three specialized AI agents:
 | `MOVIECON_LOG_FORMAT` | `json` | Log format (`json` or `text`) |
 | **Uploads** | | |
 | `MOVIECON_MAX_UPLOAD_MB` | `25` | Max upload size (MB) |
+| `MOVIECON_AV_SCAN` | - | Antivirus scan mode (`clamav`) |
 
 ### Pre-Vis Image Generation
 
@@ -238,7 +243,6 @@ If you want to limit the number of frames during tests:
 ```bash
 python3 scripts/generate_previs_images.py --limit 5 --dry-run
 ```
-| `MOVIECON_AV_SCAN` | - | Antivirus scan mode (`clamav`) |
 
 ### Database Configuration
 
@@ -303,7 +307,7 @@ Rollback strategy:
 - PostgreSQL: restore a `pg_dump` snapshot taken before migration.
 
 ```bash
-# Run tests (131 tests)
+# Run tests
 uv run pytest
 
 # Type checking
@@ -333,8 +337,8 @@ docker compose --profile jobs up --build
 ### Bare metal
 
 ```bash
-# Install with production extras
-pip install movie-conceptualizer[postgresql,redis]
+# Install with production extras (not yet published to PyPI)
+pip install "movie-conceptualizer[postgresql,redis] @ git+https://github.com/gr8monk3ys/movie-conceptualizer.git"
 
 # Configure environment
 export MOVIECON_DB_BACKEND=postgresql
@@ -345,8 +349,9 @@ export MOVIECON_REQUIRE_AUTH=true
 export MOVIECON_SECRET_KEY=your-secure-secret-key
 export ANTHROPIC_API_KEY=your-api-key
 
-# Run with gunicorn
-gunicorn movie_conceptualizer.api.main:app -k uvicorn.workers.UvicornWorker -w 4
+# Run with multiple uvicorn workers (or use gunicorn: pip install gunicorn,
+# then `gunicorn movie_conceptualizer.api.main:app -k uvicorn.workers.UvicornWorker -w 4`)
+uvicorn movie_conceptualizer.api.main:app --host 0.0.0.0 --port 8000 --workers 4
 ```
 
 ### Background Jobs (Arq)
@@ -418,4 +423,4 @@ Project ownership helpers:
 
 ## License
 
-MIT License - see LICENSE file
+GPL-3.0 License - see LICENSE file

@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "AI-powered filmmaking platform: script → shot list → storyboard"
 readme = "README.md"
 requires-python = ">=3.11"
-license = {text = "MIT"}
+license = {text = "GPL-3.0-only"}
 authors = [
     {name = "Movie Conceptualizer Team"}
 ]
@@ -12,7 +12,7 @@ keywords = ["filmmaking", "ai", "screenwriting", "storyboard", "pre-production"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
 ]
