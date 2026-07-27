@@ -121,6 +121,13 @@ TIME_OF_DAY_MAPPINGS: dict[str, TimeOfDay] = {
     "MOMENTS LATER": TimeOfDay.LATER,
 }
 
+# Continuity markers: valid TimeOfDay values, but a concrete time of day in
+# the same heading ("DAWN - CONTINUOUS") should win over them.
+_CONTINUITY_TIMES = frozenset({TimeOfDay.CONTINUOUS, TimeOfDay.LATER, TimeOfDay.SAME})
+
+# Standalone transitions that don't end with "TO:".
+_STANDALONE_TRANSITIONS = frozenset({"FADE OUT", "FADE TO BLACK", "CUT TO BLACK"})
+
 
 @dataclass
 class ParserState:
@@ -392,6 +399,11 @@ class FountainParser:
         if first_line.endswith("TO:") and first_line.isupper():
             self._parse_transition(first_line)
             return
+        if first_line.upper().rstrip(".").strip() in _STANDALONE_TRANSITIONS:
+            self._parse_transition(first_line)
+            if len(lines) > 1:
+                self._parse_action("\n".join(lines[1:]))
+            return
 
         # Check for centered text
         centered_match = CENTERED_PATTERN.match(first_line)
@@ -412,7 +424,13 @@ class FountainParser:
 
         # Check for character cue (potential dialogue)
         if self._is_character_cue(first_line):
-            self._parse_dialogue_block(lines)
+            if len(lines) > 1:
+                self._parse_dialogue_block(lines)
+            else:
+                # A lone uppercase line has no dialogue to attach to; Fountain
+                # only makes it a cue when dialogue follows. Emitting action
+                # keeps lines like "FADE IN:" or "THE END" from vanishing.
+                self._parse_action(block)
             return
 
         # Default to action
@@ -443,6 +461,11 @@ class FountainParser:
 
         # Must contain at least one letter
         if not any(c.isalpha() for c in name_part):
+            return False
+
+        # Character names don't end in terminal punctuation; uppercase
+        # exclamations ("BANG!", "NOW WHAT?") are action, not cues.
+        if name_part.rstrip().endswith(("!", "?")):
             return False
 
         # Must be mostly uppercase letters
@@ -524,11 +547,35 @@ class FountainParser:
             elif prefix_upper.startswith("EXT"):
                 scene_type = SceneType.EXTERIOR
 
-        # Determine time of day
+        # Determine time of day. Headings may carry extra dash-separated
+        # modifiers ("ELENA'S APARTMENT - FLASHBACK - NIGHT", "MOUNTAIN PEAK -
+        # DAWN - CONTINUOUS", "HOUSE - KITCHEN - DAY"), so the time is not
+        # simply "everything after the first dash": the first segment that
+        # maps to a known time starts the time region, everything before it
+        # is location, and a concrete time (DAY/NIGHT/...) wins over a
+        # continuity marker (CONTINUOUS/LATER/SAME) within that region.
         time_of_day = TimeOfDay.UNKNOWN
         if time_str:
-            time_upper = time_str.upper().strip()
-            time_of_day = TIME_OF_DAY_MAPPINGS.get(time_upper, TimeOfDay.UNKNOWN)
+            segments = [
+                seg.strip()
+                for seg in re.split(r"\s*[-–—]\s*", f"{location} - {time_str}")
+                if seg.strip()
+            ]
+            first_time_index = next(
+                (i for i, seg in enumerate(segments) if seg.upper() in TIME_OF_DAY_MAPPINGS),
+                None,
+            )
+            if first_time_index is not None and first_time_index > 0:
+                location = " - ".join(segments[:first_time_index])
+                candidates = [
+                    TIME_OF_DAY_MAPPINGS[seg.upper()]
+                    for seg in segments[first_time_index:]
+                    if seg.upper() in TIME_OF_DAY_MAPPINGS
+                ]
+                concrete = [c for c in candidates if c not in _CONTINUITY_TIMES]
+                time_of_day = concrete[0] if concrete else candidates[0]
+            else:
+                time_of_day = TIME_OF_DAY_MAPPINGS.get(time_str.upper().strip(), TimeOfDay.UNKNOWN)
 
         self._elements.append(
             ParsedElement(
@@ -588,8 +635,9 @@ class FountainParser:
             # Check for parenthetical
             paren_match = PARENTHETICAL_PATTERN.match(stripped)
             if paren_match:
-                current_parenthetical = paren_match.group(1)
-                # If we have dialogue already, emit it first
+                # A parenthetical modifies the dialogue that FOLLOWS it, so
+                # any dialogue accumulated so far is emitted with the
+                # previous parenthetical before this one takes effect.
                 if dialogue_lines:
                     self._elements.append(
                         ParsedElement(
@@ -603,6 +651,7 @@ class FountainParser:
                         )
                     )
                     dialogue_lines = []
+                current_parenthetical = paren_match.group(1)
             else:
                 dialogue_lines.append(stripped)
 

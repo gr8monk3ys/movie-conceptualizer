@@ -633,3 +633,67 @@ class TestLocationSceneAppearances:
         coffee_shop = next((loc for loc in script.locations if "COFFEE" in loc.name.upper()), None)
         assert coffee_shop is not None
         assert 1 in coffee_shop.scene_appearances
+
+
+class TestSceneHeadingModifiers:
+    """Headings with extra dash-separated modifiers keep the right time."""
+
+    def test_modifier_before_time(self):
+        script = parse_fountain("INT. ELENA'S APARTMENT - FLASHBACK - NIGHT\n\nAction.\n")
+        scene = script.scenes[0]
+        assert scene.time_of_day == TimeOfDay.NIGHT
+        assert scene.location == "ELENA'S APARTMENT - FLASHBACK"
+
+    def test_concrete_time_beats_continuity_marker(self):
+        script = parse_fountain("EXT. MOUNTAIN PEAK - DAWN - CONTINUOUS\n\nAction.\n")
+        scene = script.scenes[0]
+        assert scene.time_of_day == TimeOfDay.DAWN
+        assert scene.location == "MOUNTAIN PEAK"
+
+    def test_compound_location(self):
+        script = parse_fountain("INT. HOUSE - KITCHEN - DAY\n\nAction.\n")
+        scene = script.scenes[0]
+        assert scene.time_of_day == TimeOfDay.DAY
+        assert scene.location == "HOUSE - KITCHEN"
+
+    def test_simple_heading_unchanged(self):
+        script = parse_fountain("INT. BAR - NIGHT\n\nAction.\n")
+        scene = script.scenes[0]
+        assert scene.time_of_day == TimeOfDay.NIGHT
+        assert scene.location == "BAR"
+
+
+class TestStandaloneUppercaseLines:
+    """Lone uppercase lines must not vanish or become phantom characters."""
+
+    def test_uppercase_exclamation_is_action_not_cue(self):
+        script = parse_fountain("INT. LAB - NIGHT\n\nBANG!\n\nThe door flies open.\n")
+        scene = script.scenes[0]
+        actions = [e.text for e in scene.content if isinstance(e, ActionBlock)]
+        assert "BANG!" in actions
+        assert "The door flies open." in actions
+        assert script.characters == []
+
+    def test_lone_uppercase_line_survives_as_action(self):
+        script = parse_fountain("INT. LAB - NIGHT\n\nAction.\n\nTHE END\n")
+        scene = script.scenes[0]
+        actions = [e.text for e in scene.content if isinstance(e, ActionBlock)]
+        assert "THE END" in actions
+
+    def test_fade_out_is_transition(self):
+        script = parse_fountain("INT. LAB - NIGHT\n\nAction.\n\nFADE OUT.\n")
+        scene = script.scenes[0]
+        transitions = [e for e in scene.content if isinstance(e, Transition)]
+        assert len(transitions) == 1
+
+
+class TestMidDialogueParenthetical:
+    """Parentheticals attach to the dialogue that follows them."""
+
+    def test_parenthetical_attaches_forward_only(self):
+        script = parse_fountain("INT. LAB - NIGHT\n\nADA\nI am fine.\n(beat)\nReally, I am.\n")
+        scene = script.scenes[0]
+        dialogue = [e for e in scene.content if isinstance(e, DialogueBlock)]
+        assert [d.parenthetical for d in dialogue] == [None, "beat"]
+        assert dialogue[0].dialogue == "I am fine."
+        assert dialogue[1].dialogue == "Really, I am."
