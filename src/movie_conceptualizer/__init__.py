@@ -11,4 +11,9 @@ This package provides:
 - Production planning tools
 """
 
-__version__ = "0.1.0"
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    __version__ = version("movie-conceptualizer")
+except PackageNotFoundError:  # running from a source tree without installation
+    __version__ = "0.0.0.dev0"

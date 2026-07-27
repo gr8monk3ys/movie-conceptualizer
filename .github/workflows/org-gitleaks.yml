@@ -1,13 +1,15 @@
 name: org-gitleaks
 
 on:
-  push:
-    branches:
-      - "**"
-  pull_request:
   workflow_dispatch:
+  schedule:
+    - cron: "23 8 1 * *"  # monthly (minute-safe policy)
 
 permissions: read-all
+
+concurrency:
+  group: org-gitleaks-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   gitleaks:
