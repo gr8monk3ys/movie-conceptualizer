@@ -1,5 +1,9 @@
 # Movie Conceptualizer
 
+<p align="center">
+  <img src="docs/assets/hero.png" alt="movie-conceptualizer preview" width="640">
+</p>
+
 AI-powered filmmaking platform: **Script → Shot List → Storyboard**
 
 Transform your screenplay into professional pre-production materials using multi-agent AI.
