@@ -40,7 +40,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12"]
+        python-version: ["3.11", "3.12", "3.13"]
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4.2.2
@@ -52,4 +52,19 @@ jobs:
       - name: Install
         run: python -m pip install -e ".[dev,jobs,redis,postgresql]"
       - name: Pytest
-        run: pytest -q
+        run: pytest -q --cov=movie_conceptualizer --cov-report=term-missing --cov-fail-under=65
+
+  docker:
+    name: docker build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4.2.2
+      - name: Build image
+        run: docker build -t moviecon:ci .
+      # The image ships the CLI and the API entrypoint; importing the app
+      # catches missing runtime deps that `pip install -e` hides locally.
+      - name: Smoke test the image
+        run: |
+          docker run --rm moviecon:ci moviecon version
+          docker run --rm moviecon:ci python -c "import movie_conceptualizer.api.main"

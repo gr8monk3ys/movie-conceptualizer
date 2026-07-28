@@ -1,5 +1,9 @@
 # Movie Conceptualizer
 
+[![ci](https://github.com/gr8monk3ys/movie-conceptualizer/actions/workflows/ci.yml/badge.svg)](https://github.com/gr8monk3ys/movie-conceptualizer/actions/workflows/ci.yml)
+[![python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)](https://www.python.org/)
+[![license](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
+
 AI-powered filmmaking platform: **Script → Shot List → Storyboard**
 
 Transform your screenplay into professional pre-production materials using multi-agent AI.
