@@ -1,9 +1,13 @@
 version: 2
+# Every ecosystem sets a cooldown: a freshly published version can be
+# malicious or simply broken, so updates wait a week before being proposed.
 updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
     ignore:
       # Same-owner reusable workflows live in the PRIVATE gr8monk3ys/github
       # repo; Dependabot cannot reach it (git_dependencies_not_reachable)
@@ -13,6 +17,8 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
     groups:
       python-deps:
         patterns:
@@ -24,3 +30,5 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
