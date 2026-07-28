@@ -121,8 +121,8 @@ app = FastAPI(
     openapi_url="/openapi.json",
     lifespan=lifespan,
     license_info={
-        "name": "MIT",
-        "url": "https://opensource.org/licenses/MIT",
+        "name": "GPL-3.0",
+        "url": "https://www.gnu.org/licenses/gpl-3.0.html",
     },
     contact={
         "name": "Movie Conceptualizer Team",

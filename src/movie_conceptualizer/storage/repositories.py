@@ -84,7 +84,11 @@ class SceneAnalysis(BaseModel):
 
 
 class ShotData(BaseModel):
-    """Schema for shot data."""
+    """Schema for shot data.
+
+    Must remain a superset of the fields `api.schemas.ShotData` persists via
+    `save_shots`, or `get_shots` silently drops them on re-validation.
+    """
 
     scene_number: int = Field(...)
     shot_number: str = Field(...)
@@ -94,7 +98,11 @@ class ShotData(BaseModel):
     description: str = Field(...)
     duration_seconds: float | None = Field(default=None)
     characters: list[str] = Field(default_factory=list)
+    dialogue: str | None = Field(default=None)
+    action: str | None = Field(default=None)
     notes: str | None = Field(default=None)
+    framing_notes: str | None = Field(default=None)
+    lens_suggestion: str | None = Field(default=None)
 
 
 class StoryboardPrompt(BaseModel):

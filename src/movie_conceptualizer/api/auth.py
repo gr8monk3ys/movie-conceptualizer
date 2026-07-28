@@ -73,7 +73,8 @@ REFRESH_ROTATE = os.environ.get("MOVIECON_REFRESH_ROTATE", "true").lower() in (
     "yes",
 )
 REQUIRE_AUTH = os.environ.get("MOVIECON_REQUIRE_AUTH", "false").lower() in ("true", "1", "yes")
-DEV_MODE = os.environ.get("MOVIECON_DEV_MODE", "true").lower() in ("true", "1", "yes")
+# Default must match main.py and dependencies.py: dev behaviors are opt-in.
+DEV_MODE = os.environ.get("MOVIECON_DEV_MODE", "false").lower() in ("true", "1", "yes")
 ALLOW_DEV_FALLBACK = os.environ.get("MOVIECON_ALLOW_DEV_FALLBACK", "false").lower() in (
     "true",
     "1",
@@ -628,6 +629,12 @@ def require_admin_access(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication required",
             headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if not current_user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Inactive user account",
         )
 
     if not is_admin_user(current_user):

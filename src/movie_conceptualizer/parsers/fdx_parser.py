@@ -34,7 +34,7 @@ def parse_fdx(text: str) -> Script:
     if content is None:
         raise FDXParseError("FDX content section not found")
 
-    lines: list[str] = []
+    paragraphs: list[tuple[str, str]] = []
     for paragraph in content.findall("Paragraph"):
         para_type = (paragraph.get("Type") or "").strip().lower()
         value = _paragraph_text(paragraph)
@@ -42,24 +42,41 @@ def parse_fdx(text: str) -> Script:
             continue
 
         if para_type in ("scene heading", "slugline"):
-            lines.append(value.upper())
+            rendered = value.upper()
         elif para_type == "action":
-            lines.append(value)
+            rendered = value
         elif para_type == "character":
-            lines.append(value.upper())
+            rendered = value.upper()
         elif para_type == "dialogue":
-            lines.append(value)
+            rendered = value
         elif para_type == "parenthetical":
-            lines.append(f"({value})")
+            # FDX may or may not include the parentheses in the text itself.
+            already_wrapped = value.startswith("(") and value.endswith(")")
+            rendered = value if already_wrapped else f"({value})"
         elif para_type == "transition":
-            lines.append(value.upper())
+            rendered = value.upper()
         elif para_type == "shot":
-            lines.append(value.upper())
+            rendered = value.upper()
         else:
             # Fallback: treat as action
-            lines.append(value)
+            rendered = value
 
-        lines.append("")  # Add blank line between paragraphs
+        paragraphs.append((para_type, rendered))
+
+    lines: list[str] = []
+    dialogue_members = ("character", "parenthetical", "dialogue")
+    for index, (para_type, rendered) in enumerate(paragraphs):
+        lines.append(rendered)
+        next_type = paragraphs[index + 1][0] if index + 1 < len(paragraphs) else None
+        # Fountain treats a blank line as the end of a dialogue block, so a
+        # Character/Parenthetical/Dialogue run must stay contiguous or the
+        # cue is re-parsed as action and the dialogue is lost.
+        continues_dialogue = para_type in dialogue_members and next_type in (
+            "parenthetical",
+            "dialogue",
+        )
+        if not continues_dialogue:
+            lines.append("")
 
     fountain_text = "\n".join(lines).strip()
     parser = FountainParser()
