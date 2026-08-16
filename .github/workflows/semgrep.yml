@@ -1,7 +1,6 @@
 name: semgrep
 
 on:
-  pull_request:
   workflow_dispatch:
   schedule:
     - cron: "23 8 1 * *"  # monthly (minute-safe policy)
