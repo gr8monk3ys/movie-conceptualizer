@@ -57,3 +57,17 @@ Python 3.11 and 3.12. All four must be clean before any push.
   `_param()`/`_params()` placeholders).
 - PDF export is real (`api/pdf_export.py`, ReportLab); JSON and PDF come
   from the same export payloads.
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues on `gr8monk3ys/movie-conceptualizer`, via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical roles, label string equal to role name. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
