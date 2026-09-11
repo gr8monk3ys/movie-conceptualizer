@@ -1,34 +1,26 @@
+# Dependabot retune 2026-09-10: version-update PRs are OFF (open-pull-requests-limit: 0).
+# Dependabot SECURITY updates still run; they are a repo setting, not this file.
+# To re-enable version bumps, raise the limit.
 version: 2
-# Every ecosystem sets a cooldown: a freshly published version can be
-# malicious or simply broken, so updates wait a week before being proposed.
 updates:
-  - package-ecosystem: "github-actions"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-    cooldown:
-      default-days: 7
-    ignore:
-      # Same-owner reusable workflows live in the PRIVATE gr8monk3ys/github
-      # repo; Dependabot cannot reach it (git_dependencies_not_reachable)
-      # and fails every weekly run. They are pinned manually, not versioned.
-      - dependency-name: "gr8monk3ys/*"
-  - package-ecosystem: "pip"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-    cooldown:
-      default-days: 7
-    groups:
-      python-deps:
-        patterns:
-          - "*"
-    ignore:
-      # Pinned to the ruff-pre-commit hook rev; bump both together by hand.
-      - dependency-name: "ruff"
-  - package-ecosystem: "docker"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-    cooldown:
-      default-days: 7
+- package-ecosystem: github-actions
+  directory: /
+  schedule:
+    interval: monthly
+  cooldown:
+    default-days: 7
+  open-pull-requests-limit: 0
+- package-ecosystem: pip
+  directory: /
+  schedule:
+    interval: monthly
+  cooldown:
+    default-days: 7
+  open-pull-requests-limit: 0
+- package-ecosystem: docker
+  directory: /
+  schedule:
+    interval: monthly
+  cooldown:
+    default-days: 7
+  open-pull-requests-limit: 0
