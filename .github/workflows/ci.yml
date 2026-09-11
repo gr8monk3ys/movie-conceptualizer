@@ -1,6 +1,9 @@
 name: ci
 
 on:
+  # public repo: Actions minutes are unlimited, keep the default branch measured
+  push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
