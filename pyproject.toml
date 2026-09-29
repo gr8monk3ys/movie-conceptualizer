@@ -111,6 +111,10 @@ module = [
     "passlib.*",
     "reportlab",
     "reportlab.*",
+    "arq",
+    "arq.*",
+    "redis",
+    "redis.*",
 ]
 ignore_missing_imports = true
 
