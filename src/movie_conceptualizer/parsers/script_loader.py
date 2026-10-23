@@ -392,7 +392,9 @@ def _normalize_scene_headings(text: str) -> str:
     for line in lines:
         if _is_scene_heading(line):
             upper = line.strip().upper()
-            upper = re.sub(r"^(INT|EXT|INT/EXT|I/E)\b", r"\1.", upper)
+            # Accept "INT", "INT." or "INT-" and emit exactly one period, so a
+            # heading that is already well-formed is left unchanged.
+            upper = re.sub(r"^(INT/EXT|I/E|INT|EXT)(?:\.|\b)[\s\-]*", r"\1. ", upper)
             normalized_lines.append(upper)
         else:
             normalized_lines.append(line)
