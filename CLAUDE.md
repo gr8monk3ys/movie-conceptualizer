@@ -7,6 +7,7 @@ list → storyboard prompts, via CLI (`moviecon`) and a FastAPI service.
 
 ```bash
 pip install -e ".[dev,jobs,redis,postgresql]"   # full dev install
+make check                                       # all four gates below, in CI order
 pytest -q                                        # run tests
 ruff check src tests scripts                     # lint
 ruff format --check src tests scripts            # formatting gate
